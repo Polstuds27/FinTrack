@@ -1,0 +1,387 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * FinTrack design tokens (docs/theme.md).
+ *
+ * Single source of truth: every colour lives here as an RGB triplet, is exposed
+ * as a CSS variable, and is consumed by Tailwind through `tailwind.config.cjs`.
+ * Keeping the values in CSS (rather than JS) means stylesheet compilation never
+ * depends on the Tailwind config being reloaded - the config caches for the
+ * lifetime of a Vite process.
+ *
+ * Light is the default; `[data-theme="dark"]` overrides the semantic names only,
+ * so components never branch on the theme.
+ */
+
+@layer base {
+  :root {
+    color-scheme: light;
+
+    /* Brand ------------------------------------------------------------ */
+    --color-primary: 15 118 110; /* #0F766E */
+    --color-primary-hover: 13 95 89; /* #0D5F59 */
+    --color-primary-soft: 204 251 241; /* #CCFBF1 */
+    --color-primary-contrast: 255 255 255;
+    --color-accent: 45 212 191; /* #2DD4BF */
+
+    /* Surfaces & text --------------------------------------------------- */
+    --color-canvas: 248 250 252; /* #F8FAFC */
+    --color-surface: 255 255 255;
+    --color-surface-raised: 255 255 255;
+    --color-surface-sunken: 241 245 249;
+    --color-ink: 15 23 42; /* #0F172A */
+    --color-ink-soft: 30 41 59;
+    --color-muted: 100 116 139; /* #64748B */
+    --color-faint: 148 163 184;
+    --color-line: 226 232 240; /* #E2E8F0 */
+    --color-line-strong: 203 213 225;
+
+    /* Financial semantics ----------------------------------------------- */
+    --color-income: 22 163 74; /* #16A34A */
+    --color-expense: 220 38 38; /* #DC2626 */
+    --color-transfer: 37 99 235; /* #2563EB */
+    --color-warning: 217 119 6; /* #D97706 */
+    --color-info: 37 99 235; /* #2563EB */
+
+    /* Tinted backgrounds for the semantics above */
+    --color-income-soft: 220 252 231;
+    --color-expense-soft: 254 226 226;
+    --color-transfer-soft: 219 234 254;
+    --color-warning-soft: 254 243 199;
+    --color-info-soft: 219 234 254;
+    --color-primary-soft-bg: 240 253 250;
+
+    /* Effects ----------------------------------------------------------- */
+    --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+    --shadow-raised: 0 4px 12px rgb(15 23 42 / 0.08);
+    --shadow-overlay: 0 20px 45px rgb(15 23 42 / 0.18);
+    --ring-focus: 45 212 191;
+
+    /* Elevation scale (used by class utilities) */
+    --color-overlay: 15 23 42;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+
+    --color-primary: 45 212 191; /* accent reads better on dark */
+    --color-primary-hover: 94 234 212;
+    --color-primary-soft: 19 78 74;
+    --color-primary-contrast: 2 44 41;
+    --color-accent: 45 212 191;
+
+    --color-canvas: 2 6 12;
+    --color-surface: 12 20 32;
+    --color-surface-raised: 18 28 43;
+    --color-surface-sunken: 8 14 24;
+    --color-ink: 226 232 240;
+    --color-ink-soft: 203 213 225;
+    --color-muted: 148 163 184;
+    --color-faint: 100 116 139;
+    --color-line: 30 41 59;
+    --color-line-strong: 51 65 85;
+
+    --color-income: 74 222 128;
+    --color-expense: 248 113 113;
+    --color-transfer: 96 165 250;
+    --color-warning: 251 191 36;
+    --color-info: 96 165 250;
+
+    --color-income-soft: 20 63 45;
+    --color-expense-soft: 76 26 26;
+    --color-transfer-soft: 23 48 86;
+    --color-warning-soft: 76 51 12;
+    --color-info-soft: 23 48 86;
+    --color-primary-soft-bg: 12 40 38;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-raised: 0 6px 18px rgb(0 0 0 / 0.45);
+    --shadow-overlay: 0 24px 50px rgb(0 0 0 / 0.6);
+    --ring-focus: 45 212 191;
+  }
+
+  * {
+    border-color: rgb(var(--color-line));
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: rgb(var(--color-canvas));
+    color: rgb(var(--color-ink));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv02", "cv03", "cv04", "tnum" 0;
+  }
+
+  /* Financial figures should always be tabular so columns line up. */
+  .tabular,
+  [data-numeric="true"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--ring-focus));
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------- surfaces */
+  .card {
+    @apply rounded-xl border bg-surface;
+    border-color: rgb(var(--color-line));
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-flat {
+    @apply rounded-xl border bg-surface;
+    border-color: rgb(var(--color-line));
+  }
+
+  .card-inset {
+    @apply rounded-lg bg-surface-sunken;
+  }
+
+  .hairline {
+    border-color: rgb(var(--color-line));
+  }
+
+  /* ------------------------------------------------------------------ inputs */
+  .input {
+    @apply w-full rounded-lg border px-3 py-2 text-sm transition-colors;
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-ink));
+    border-color: rgb(var(--color-line-strong));
+  }
+
+  .input::placeholder {
+    color: rgb(var(--color-faint));
+  }
+
+  .input:hover:not(:disabled) {
+    border-color: rgb(var(--color-primary) / 0.5);
+  }
+
+  .input:focus {
+    outline: 2px solid rgb(var(--color-ring-focus, var(--ring-focus)));
+    outline-offset: 1px;
+    border-color: rgb(var(--color-primary));
+  }
+
+  .input:disabled {
+    @apply cursor-not-allowed opacity-60;
+    background-color: rgb(var(--color-surface-sunken));
+  }
+
+  .input-error {
+    border-color: rgb(var(--color-expense));
+  }
+
+  .label {
+    @apply text-xs font-medium tracking-wide text-muted uppercase;
+  }
+
+  .field-hint {
+    @apply text-xs text-muted;
+  }
+
+  .field-error {
+    @apply text-xs text-expense;
+  }
+
+  /* ----------------------------------------------------------------- buttons */
+  .btn {
+    @apply inline-flex cursor-pointer select-none items-center justify-center gap-2
+      rounded-lg px-4 py-2 text-sm font-medium transition-colors
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-primary {
+    @apply btn text-white;
+    background-color: rgb(var(--color-primary));
+    color: rgb(var(--color-primary-contrast));
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background-color: rgb(var(--color-primary-hover));
+  }
+
+  .btn-secondary {
+    @apply btn border;
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-ink));
+    border-color: rgb(var(--color-line-strong));
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background-color: rgb(var(--color-surface-sunken));
+  }
+
+  .btn-ghost {
+    @apply btn;
+    color: rgb(var(--color-muted));
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background-color: rgb(var(--color-surface-sunken));
+    color: rgb(var(--color-ink));
+  }
+
+  .btn-danger {
+    @apply btn border;
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-expense));
+    border-color: rgb(var(--color-expense) / 0.4);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background-color: rgb(var(--color-expense) / 0.1);
+  }
+
+  .btn-income {
+    @apply btn;
+    background-color: rgb(var(--color-income));
+    color: #fff;
+  }
+
+  .btn-expense {
+    @apply btn;
+    background-color: rgb(var(--color-expense));
+    color: #fff;
+  }
+
+  /* Square tap target for icon-only controls (44px on touch). */
+  .icon-btn {
+    @apply inline-flex cursor-pointer items-center justify-center rounded-lg
+      transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply h-9 w-9 shrink-0;
+    color: rgb(var(--color-muted));
+  }
+
+  .icon-btn:hover:not(:disabled) {
+    background-color: rgb(var(--color-surface-sunken));
+    color: rgb(var(--color-ink));
+  }
+
+  .icon-btn-lg {
+    @apply h-11 w-11;
+  }
+
+  /* ------------------------------------------------------------------ badges */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+
+  .badge-neutral {
+    @apply badge;
+    background-color: rgb(var(--color-surface-sunken));
+    color: rgb(var(--color-muted));
+  }
+
+  .badge-primary {
+    @apply badge;
+    background-color: rgb(var(--color-primary-soft-bg));
+    color: rgb(var(--color-primary));
+  }
+
+  .badge-synced {
+    @apply badge;
+    background-color: rgb(var(--color-income-soft));
+    color: rgb(var(--color-income));
+  }
+
+  .badge-pending {
+    @apply badge;
+    background-color: rgb(var(--color-warning-soft));
+    color: rgb(var(--color-warning));
+  }
+
+  .badge-failed,
+  .badge-conflict {
+    @apply badge;
+    background-color: rgb(var(--color-expense-soft));
+    color: rgb(var(--color-expense));
+  }
+
+  .badge-idle {
+    @apply badge;
+    background-color: rgb(var(--color-surface-sunken));
+    color: rgb(var(--color-muted));
+  }
+
+  /* -------------------------------------------------------------- navigation */
+  .nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors;
+    color: rgb(var(--color-muted));
+  }
+
+  .nav-link:hover {
+    background-color: rgb(var(--color-surface-sunken));
+    color: rgb(var(--color-ink));
+  }
+
+  .nav-link-active {
+    background-color: rgb(var(--color-primary-soft-bg));
+    color: rgb(var(--color-primary));
+  }
+
+  /* ------------------------------------------------------------------ tables */
+  .th {
+    @apply px-3 py-2 text-left text-xs font-semibold tracking-wide text-muted uppercase;
+  }
+
+  .td {
+    @apply px-3 py-2.5 text-sm;
+  }
+
+  .row-link {
+    @apply transition-colors;
+  }
+
+  .row-link:hover {
+    background-color: rgb(var(--color-surface-sunken));
+  }
+
+  /* --------------------------------------------------------------- skeletons */
+  .skeleton {
+    @apply animate-pulse rounded-md;
+    background-color: rgb(var(--color-surface-sunken));
+  }
+
+  /* ------------------------------------------------------------ scroll areas */
+  .scroll-area {
+    @apply overflow-y-auto overscroll-contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--color-line-strong)) transparent;
+  }
+
+  .scroll-area::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-area::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--color-line-strong));
+    border-radius: 999px;
+  }
+}

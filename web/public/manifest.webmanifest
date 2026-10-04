@@ -1,0 +1,46 @@
+{
+  "name": "FinTrack — Personal Money Manager",
+  "short_name": "FinTrack",
+  "description": "Offline-first personal finance: accounts, budgets, goals, bills and reports that work without a connection.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F6F8F7",
+  "theme_color": "#0F766E",
+  "categories": ["finance", "productivity", "utilities"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Add transaction", "url": "/transactions/new" },
+    { "name": "Transactions", "url": "/transactions" },
+    { "name": "Overview", "url": "/overview" }
+  ]
+}
