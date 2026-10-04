@@ -34,7 +34,7 @@ export function OverviewSection() {
           </DetailRow>
         </dl>
         <Divider />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 py-3">
           <SectionLink to="/settings/profile">Edit profile</SectionLink>
           <SectionLink to="/settings/security">Security</SectionLink>
         </div>
@@ -48,7 +48,7 @@ export function OverviewSection() {
           <DetailRow label="Rows per page">{preferences.pageSize}</DetailRow>
         </dl>
         <Divider />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 py-3">
           <SectionLink to="/settings/appearance">Appearance</SectionLink>
           <SectionLink to="/settings/financial">Financial</SectionLink>
           <SectionLink to="/settings/currency">Currency</SectionLink>
@@ -56,7 +56,7 @@ export function OverviewSection() {
       </Panel>
 
       <Panel title="Sync" description="How this device talks to the server.">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 py-1.5">
           <Badge tone={status === "error" ? "expense" : status === "offline" ? "warning" : "neutral"}>
             {status}
           </Badge>
@@ -74,7 +74,7 @@ export function OverviewSection() {
           </p>
         )}
         <Divider />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 py-3">
           <SectionLink to="/settings/sync">Sync settings</SectionLink>
           <SectionLink to="/sync/conflicts">Resolve conflicts</SectionLink>
         </div>

@@ -86,7 +86,7 @@ class RegisterView(AuthThrottleMixin, views.APIView):
         link = f"{settings.FRONTEND_URL}/verify-email?uid={uid}&token={token}"
         send_verification_email(
             to=user.email,
-            to_name=user.get_full_name(),
+            name=user.get_full_name(),
             link=link,
         )
         log_audit(user, "register", request=request)

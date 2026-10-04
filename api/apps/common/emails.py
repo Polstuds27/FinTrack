@@ -124,7 +124,7 @@ def send_verification_email(*, to: str, link: str, name: str) -> None:
     """
     try:
         if emailjs_configured():
-            _send_via_emailjs(to=to, link=link, template=settings.EMAILJS_TEMPLATEW_ID)
+            _send_via_emailjs(to=to, link=link, template=settings.EMAILJS_TEMPLATEW_ID, name=name)
         else:
             # Optional SMTP fallback
             send_mail(
