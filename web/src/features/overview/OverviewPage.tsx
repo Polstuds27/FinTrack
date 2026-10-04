@@ -343,38 +343,77 @@ export function OverviewPage() {
               </ul>
             )}
             {creditCards.length > 0 && (
-              <>
-                <Divider label="Credit" />
-                <ul className="divide-y divide-line">
-                  {creditCards.map((account) => {
-                    const used = Math.abs(Math.min(0, account.current_balance));
-                    const limit = account.credit_limit ?? 0;
-                    const pct = limit > 0 ? (used / limit) * 100 : 0;
-                    return (
-                      <li key={account.id}>
-                        <Link to={`/accounts/${account.id}`} className="row-link px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-soft-bg text-primary">
-                              <CreditCard className="h-4 w-4" />
+            <>
+              <Divider label="Credit" />
+
+              <ul className="divide-y divide-line pb-2">
+                {creditCards.map((account) => {
+                  const used = Math.max(0, -(account.current_balance ?? 0));
+                  const limit = Math.max(0, account.credit_limit ?? 0);
+
+                  const hasCreditLimit = limit > 0;
+                  const pct = hasCreditLimit
+                    ? Math.min(100, (used / limit) * 100)
+                    : 0;
+
+                  return (
+                    <li key={account.id}>
+                      <Link
+                        to={`/accounts/${account.id}`}
+                        className="row-link flex items-center gap-3 px-4 py-2.5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            aria-hidden="true"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-soft-bg text-primary"
+                          >
+                            <CreditCard className="h-4 w-4" />
+                          </span>
+
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-ink">
+                              {account.name}
                             </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium text-ink">{account.name}</span>
+
+                            {hasCreditLimit ? (
                               <span className="tabular block truncate text-xs text-muted">
-                                {formatMoney(used, account.currency)} of {formatMoney(limit, account.currency)} used
+                                {formatMoney(used, account.currency)} of{" "}
+                                {formatMoney(limit, account.currency)} used
                               </span>
-                            </span>
-                            <span className={`tabular shrink-0 text-sm font-semibold ${pct > 80 ? "text-warning" : "text-ink"}`}>
+                            ) : (
+                              <span className="block truncate text-xs text-muted">
+                                No credit limit set
+                              </span>
+                            )}
+                          </span>
+
+                          {hasCreditLimit && (
+                            <span
+                              className={`tabular shrink-0 text-sm font-semibold ${
+                                pct > 80 ? "text-warning" : "text-ink"
+                              }`}
+                            >
                               {formatPercent(pct)}
                             </span>
-                          </div>
-                          <ProgressBar value={pct} size="sm" className="mt-2" tone={pct > 80 ? "warning" : "primary"} label={`${account.name} credit utilization`} />
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
+                          )}
+                        </div>
+
+                        {hasCreditLimit && (
+                          <ProgressBar
+                            value={pct}
+                            size="sm"
+                            className="mt-2"
+                            tone={pct > 80 ? "warning" : "primary"}
+                            label={`${account.name} credit utilization`}
+                          />
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
           </Card>
         </div>
 
