@@ -351,6 +351,9 @@ export function LandingPage() {
             <div>
               <p className="text-sm font-semibold text-ink">FinTrack</p>
               <p className="text-xs text-muted">Personal Money Manager — offline-first PWA</p>
+              <p className="text-xs text-muted">Developed By: <a href="https://github.com/Polstuds27" className="text-muted hover:text-ink">
+              Polstuds27
+            </a></p>
             </div>
           </div>
 
