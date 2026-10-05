@@ -8,6 +8,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { SyncProvider } from "./sync/SyncContext";
 import { PreferencesProvider } from "./features/settings/preferences";
 import { ToastProvider } from "./components/ui/Toast";
+import { ErrorBoundary } from "./components/ui";
 import { NetworkBanner } from "./components/layout/NetworkBanner";
 import { registerServiceWorker } from "./app/pwa";
 
@@ -23,7 +24,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <PreferencesProvider>
             <SyncProvider>
               <ToastProvider>
-                <App />
+                {/* Last line of defence: a render crash shows this instead of a
+                    blank page, and keeps the rest of the shell mounted. */}
+                <ErrorBoundary>
+                  <App />
+                </ErrorBoundary>
                 <NetworkBanner />
               </ToastProvider>
             </SyncProvider>

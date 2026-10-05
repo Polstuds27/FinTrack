@@ -45,7 +45,7 @@ export function AboutSection() {
           </DetailRow>
         </dl>
         <Divider />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 py-2">
           <LinkButton to="/settings/data">Manage data</LinkButton>
           <LinkButton to="/sync/conflicts">Sync conflicts</LinkButton>
         </div>

@@ -97,7 +97,10 @@ function NetWorthCard() {
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <div className="flex h-full flex-col gap-1 overflow-y-auto px-3 pb-4 pt-3">
+    // `flex-1 min-h-0` (not `h-full`): inside the fixed-height sidebar this is
+    // the one region that scrolls, and only when the links exceed the screen.
+    // In the drawer it falls back to natural height and the wrapper scrolls.
+    <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 pt-3">
       <NetWorthCard />
       <div className="pt-3">
         <NavList items={PRIMARY_NAV} onNavigate={onNavigate} />
@@ -159,8 +162,11 @@ function UserMenu() {
 /** Desktop sidebar. Hidden below `lg`, where the bottom bar takes over. */
 function Sidebar() {
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-line bg-surface lg:flex lg:flex-col">
-      <div className="flex h-14 items-center border-b border-line px-4">
+    // Sticky + viewport height: the nav stays anchored under the page header
+    // instead of scrolling away with the content, and only the link list
+    // scrolls — and only when it is taller than the screen.
+    <aside className="hidden w-64 shrink-0 border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:self-start">
+      <div className="flex h-14 shrink-0 items-center border-b border-line px-4">
         <Brand />
       </div>
       <SidebarBody />

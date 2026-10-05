@@ -11,5 +11,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.ts",
+    // The suite is added later; `vitest run` exits 1 when it finds no files.
+    passWithNoTests: true,
   },
 });

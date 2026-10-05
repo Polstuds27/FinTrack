@@ -5,7 +5,7 @@
  * sheet on mobile, side drawer on desktop, amount first. Opened from the central
  * "+" in the mobile bottom bar and from the Overview/Transactions actions.
  */
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Overlay } from "../../components/ui";
 import { TransactionForm, type TransactionType } from "./TransactionForm";
@@ -28,7 +28,20 @@ export function QuickAddSheet({ open, onClose }: QuickAddSheetProps) {
     ? (requested as TransactionType)
     : undefined;
 
-  // Clear the deep link once the sheet closes so a refresh doesn't reopen it.
+  // Closing has to drop the `?add=` deep link *at the same time*: the parent
+  // derives `open` from that param, so leaving it in place would flip the sheet
+  // straight back open (X / Escape / Cancel all looked like no-ops).
+  const close = useCallback(() => {
+    if (params.has("add")) {
+      const next = new URLSearchParams(params);
+      next.delete("add");
+      setParams(next, { replace: true });
+    }
+    onClose();
+  }, [params, setParams, onClose]);
+
+  // Safety net for a stale deep link landing on a route that doesn't open the
+  // sheet (`/overview?add=expense`): clear it so a refresh doesn't keep it.
   const requestedKey = requested ?? "";
   useEffect(() => {
     if (open || !requestedKey) return;
@@ -44,7 +57,7 @@ export function QuickAddSheet({ open, onClose }: QuickAddSheetProps) {
   return (
     <Overlay
       open={open}
-      onClose={onClose}
+      onClose={close}
       title="Add transaction"
       description="Saved on this device first, then synced."
       variant="sheet"
@@ -54,8 +67,8 @@ export function QuickAddSheet({ open, onClose }: QuickAddSheetProps) {
         key={initialType ?? "default"}
         initialType={initialType}
         dense
-        onSaved={onClose}
-        onCancel={onClose}
+        onSaved={close}
+        onCancel={close}
       />
     </Overlay>
   );

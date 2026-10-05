@@ -5,7 +5,7 @@
  * statement fields only appear for card accounts, so the form stays short for
  * the common case.
  */
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { LocalAccount } from "../../db/types";
@@ -55,6 +55,27 @@ export function AccountFormOverlay({ open, onClose, account, defaultType }: Acco
   const [newGroupName, setNewGroupName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /**
+   * The routed editor mounts this overlay before Dexie answers, so `account` is
+   * `undefined` on the first render. Hydrating once when the row arrives keeps
+   * an edit from opening blank and then saving the base-currency default over a
+   * PHP account (or zeroing the opening balance).
+   */
+  const hydratedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!account || hydratedId.current === account.id) return;
+    hydratedId.current = account.id;
+    setName(account.name);
+    setType(account.type);
+    setCurrency(account.currency);
+    setOpening(account.opening_balance);
+    setLimit(account.credit_limit ?? 0);
+    setStatementDay(account.statement_day ?? 1);
+    setDueDay(account.due_day ?? 20);
+    setGroupId(account.group_id ?? "");
+    setNewGroupName(null);
+  }, [account]);
 
   const groups = useLiveQuery(
     async () =>

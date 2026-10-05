@@ -13,9 +13,15 @@ import { getAccessToken } from "../../api/client";
 import { Panel } from "./Panel";
 
 interface Session {
-  id: string;
+  /** simplejwt's `OutstandingToken.id` is a `BigAutoField`, i.e. a number. */
+  id: string | number;
   created_at: string;
   expires_at: string;
+}
+
+/** Short, sortable-looking label that never assumes the id is a string. */
+function sessionLabel(id: string | number): string {
+  return String(id).slice(0, 8);
 }
 
 export function DevicesSection() {
@@ -27,8 +33,8 @@ export function DevicesSection() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const data = await apiFetch<Session[] | Session[]>("/auth/sessions/");
-      setSessions(Array.isArray(data) ? data : []);
+      const data = await apiFetch<Session[] | Record<string, unknown>>("/auth/sessions/");
+      setSessions(Array.isArray(data) ? data.filter((row) => row != null) : []);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't load sessions.");
       setSessions((current) => current ?? []);
@@ -39,7 +45,7 @@ export function DevicesSection() {
     void load();
   }, [load]);
 
-  async function revoke(id: string) {
+  async function revoke(id: Session["id"]) {
     setBusy(true);
     try {
       await apiFetch("/auth/sessions/", {
@@ -109,7 +115,7 @@ export function DevicesSection() {
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm font-medium text-ink">
                     <MonitorSmartphone aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
-                    <span className="tabular truncate">Session {session.id.slice(0, 8)}</span>
+                    <span className="tabular truncate">Session {sessionLabel(session.id)}</span>
                   </p>
                   <p className="tabular mt-0.5 text-xs text-muted">
                     Started {formatDateTime(session.created_at)} · expires{" "}

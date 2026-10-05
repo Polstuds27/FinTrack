@@ -6,7 +6,7 @@
  * JSON blob, written through a single setter so every screen reads a consistent
  * snapshot.
  */
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getMeta, setMeta } from "../../sync/outbox";
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -87,24 +87,56 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const stored = await getMeta(KEY);
-      if (cancelled) return;
-      if (stored) {
+  /** Stored blob, read once. `update()` awaits it so startup writes can't clobber it. */
+  const hydration = useRef<Promise<Preferences> | null>(null);
+  const hydrate = useCallback(() => {
+    if (!hydration.current) {
+      hydration.current = (async () => {
+        const stored = await getMeta(KEY);
+        if (!stored) return DEFAULT_PREFERENCES;
         try {
-          setPreferences({ ...DEFAULT_PREFERENCES, ...(JSON.parse(stored) as Partial<Preferences>) });
+          return { ...DEFAULT_PREFERENCES, ...(JSON.parse(stored) as Partial<Preferences>) };
         } catch {
           // Corrupt blob: fall back to defaults rather than blocking startup.
+          return DEFAULT_PREFERENCES;
         }
-      }
-      setReady(true);
-    })();
+      })();
+    }
+    return hydration.current;
+  }, []);
+
+  /**
+   * Mirror of the live state.
+   *
+   * `update()` must know the *current* preferences synchronously — reading them
+   * back out of React's state updater is unreliable (React only runs the updater
+   * eagerly when the fiber has no pending work), and doing so used to persist
+   * `DEFAULT_PREFERENCES`, which reset the base currency to USD on the next
+   * reload.
+   */
+  const currentRef = useRef<Preferences>(DEFAULT_PREFERENCES);
+  const appliedRef = useRef(false);
+  const applyLoaded = useCallback((loaded: Preferences) => {
+    if (appliedRef.current) return;
+    appliedRef.current = true;
+    currentRef.current = loaded;
+    setPreferences(loaded);
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void hydrate()
+      .then((loaded) => {
+        if (!cancelled) applyLoaded(loaded);
+      })
+      .catch(() => {
+        // Unreadable storage: stay on the defaults, exactly as before.
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hydrate, applyLoaded]);
 
   useEffect(() => {
     applyTheme(preferences.theme);
@@ -120,14 +152,20 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 
   const update = useCallback(
     async (patch: Partial<Preferences>) => {
-      let next: Preferences = DEFAULT_PREFERENCES;
-      setPreferences((current) => {
-        next = { ...current, ...patch };
-        return next;
-      });
+      // Never overwrite the blob with defaults: a write that lands before the
+      // stored preferences are read would silently reset everything.
+      try {
+        applyLoaded(await hydrate());
+      } catch {
+        // Storage unreadable (private mode, blocked IndexedDB): fall through so
+        // the change still applies to this session instead of being dropped.
+      }
+      const next = { ...currentRef.current, ...patch };
+      currentRef.current = next;
+      setPreferences(next);
       await setMeta(KEY, JSON.stringify(next));
     },
-    [],
+    [hydrate, applyLoaded],
   );
 
   const value = useMemo(() => ({ preferences, update, ready }), [preferences, update, ready]);

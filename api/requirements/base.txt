@@ -1,14 +1,23 @@
-Django>=5.0,<5.2
-djangorestframework>=3.15
-djangorestframework-simplejwt>=5.3
-drf-spectacular>=0.27
-django-cors-headers>=4.4
-django-environ>=0.11
-dj-database-url>=2.2
-psycopg[binary]>=3.2
-gunicorn>=23.0
-whitenoise>=6.7
-django-q2>=1.6
-django-filter>=24.3
-cloudinary>=1.41
-uvicorn[standard]>=0.30,<1.0
+# Pinned to the versions the app is developed and tested against.
+#
+# These were ranges, so `pip install` on Render silently picked the newest
+# release while the local machine kept whatever it already had — the two
+# drifted apart (deployed DRF answered `{"detail": ["mfa_required"]}`, local
+# DRF answered `{"detail": "mfa_required"}`), which is what made two-factor
+# sign-in behave differently per environment.
+#
+# Bump deliberately: change a version here, install, run the checks, commit.
+Django==5.1.15
+djangorestframework==3.17.1
+djangorestframework-simplejwt==5.5.1
+drf-spectacular==0.30.0
+django-cors-headers==4.9.0
+django-environ==0.14.0
+dj-database-url==3.1.2
+psycopg[binary]==3.3.6
+gunicorn==26.0.0
+whitenoise==6.12.0
+django-q2==1.10.0
+django-filter==24.3
+cloudinary==1.44.2
+uvicorn[standard]==0.54.0
