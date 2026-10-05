@@ -224,6 +224,14 @@ export interface OutboxEntry {
   last_error: string | null;
   server_version: number | null;
   created_at: string;
+  /**
+   * Account that queued this change (`ownerKey()` form). IndexedDB is shared by
+   * every account that signs in here, so an unlabelled queue is exactly how one
+   * account's edits get pushed under another's session. Absent only on entries
+   * written before this field existed; those are stamped when the cache is
+   * claimed.
+   */
+  owner?: string | null;
 }
 
 export interface MetaEntry {

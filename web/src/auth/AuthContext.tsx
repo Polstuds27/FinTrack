@@ -7,8 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiFetch, clearTokens, getAccessToken, storeTokens } from "../api/client";
-import { clearAllData } from "../db";
+import { apiFetch, ApiError, clearTokens, getAccessToken, storeTokens } from "../api/client";
+import { clearAllData, db } from "../db";
+import { EMAIL_KEY, LOCAL_OWNER_KEY, localOwner, ownerKey } from "./owner";
 
 export interface UserProfile {
   id?: string;
@@ -65,21 +66,64 @@ export interface ResetInput {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const EMAIL_KEY = "fintrack_email";
-const LOCAL_OWNER_KEY = "fintrack_local_owner";
+/** Shown when the previous account's rows can't be removed before a sign-in. */
+const CACHE_ERROR =
+  "Couldn't clear the previous account's data. Close any other FinTrack tabs, then try again.";
+
+const CHECKPOINT_PREFIX = "last_seq:";
+
+/**
+ * True when something in the cache still names a different account: a sync
+ * checkpoint or a queued change left behind by a wipe that failed earlier.
+ * Residue like this is how one account's rows survive a sign-in as another.
+ */
+async function hasForeignResidue(owner: string): Promise<boolean> {
+  try {
+    const checkpoints = await db.meta.where("key").startsWith(CHECKPOINT_PREFIX).primaryKeys();
+    for (const checkpoint of checkpoints) {
+      const account = ownerKey(String(checkpoint).slice(CHECKPOINT_PREFIX.length));
+      // `anonymous` is the pre-sign-in cursor, not somebody else's account.
+      if (account && account !== "anonymous" && account !== owner) return true;
+    }
+    const queued = await db.outbox.filter((entry) => Boolean(entry.owner)).toArray();
+    return queued.some((entry) => ownerKey(entry.owner) !== owner);
+  } catch {
+    // The cache can't be inspected, so it can't be vouched for either: report
+    // residue so the wipe runs and — should that fail — surfaces as CACHE_ERROR.
+    return true;
+  }
+}
 
 /**
  * IndexedDB holds one account's money data. Signing a *different* account in on
  * the same browser must not leave the previous account's rows on screen (and in
- * the sync outbox), so the owner is stamped next to the cache and a mismatch
- * wipes it before the new account syncs.
+ * the sync outbox), so the owner is stamped next to the cache and a mismatch —
+ * or any residue still naming someone else — wipes it before the new account
+ * syncs.
+ *
+ * The stamp is only ever written once the cache is known to be this account's:
+ * a failed wipe throws instead of pretending, so callers leave the user signed
+ * out rather than attributing foreign rows to them.
  */
 async function claimLocalData(nextEmail: string): Promise<void> {
-  const owner = localStorage.getItem(LOCAL_OWNER_KEY);
-  // A missing stamp means the cache belongs to a session from before the stamp
-  // existed — its owner is unknown, so don't guess: start clean.
-  if (owner !== nextEmail) await clearAllData();
-  localStorage.setItem(LOCAL_OWNER_KEY, nextEmail);
+  const owner = ownerKey(nextEmail);
+  if (localOwner() !== owner || (await hasForeignResidue(owner))) {
+    try {
+      await clearAllData();
+    } catch {
+      throw new ApiError(500, CACHE_ERROR);
+    }
+  }
+  localStorage.setItem(LOCAL_OWNER_KEY, owner);
+  // Entries queued before the queue was labelled belong to whichever account
+  // the stamp just confirmed owns this cache — it only reaches here with no
+  // foreign residue left, so this is attribution, never adoption.
+  try {
+    await db.outbox.filter((entry) => !entry.owner).modify({ owner });
+  } catch {
+    // Relabelling legacy entries is a refinement: on failure they stay
+    // unsendable rather than risk going out under the wrong session.
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -109,14 +153,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             otp ? { email: nextEmail, password, otp } : { email: nextEmail, password },
           ),
         });
+        // Claim the cache *before* a token exists: if the previous account's
+        // rows can't be removed the sign-in fails, so a browser holding someone
+        // else's data is never reachable — not even across a reload.
+        await claimLocalData(nextEmail);
         storeTokens(data.access, data.refresh);
-        // Runs before `isAuthenticated` flips so the first sync can only ever
-        // see this account's rows.
-        try {
-          await claimLocalData(nextEmail);
-        } catch {
-          // A cache wipe that fails must not block sign-in.
-        }
         localStorage.setItem(EMAIL_KEY, nextEmail);
         setEmail(nextEmail);
         setIsAuthenticated(true);
@@ -154,8 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sign-out really signs out: the next person at this browser must not
       // find the previous account's balances in IndexedDB.
       await clearAllData();
-    } catch {
-      // Local state is already cleared; a cache failure changes nothing here.
+    } catch (cause) {
+      // Local state is already cleared; the next sign-in re-checks the cache
+      // and refuses to continue if these rows are still here.
+      console.warn("FinTrack: local cache wipe failed on sign-out", cause);
     }
   }, []);
 
@@ -188,12 +231,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isAuthenticated) void refreshProfile();
   }, [isAuthenticated, refreshProfile]);
 
-  // A session restored from localStorage may predate the owner stamp: adopt the
-  // cached rows for this account so the next sign-in knows whose they are.
+  // A session restored from localStorage may predate the owner stamp, or have
+  // had its stamp written by an older build that adopted whatever was here.
+  // Rows that can't be attributed are cleared rather than adopted — adopting an
+  // unstamped cache is exactly how another account's data came to be claimed by
+  // this one.
   useEffect(() => {
-    if (email && !localStorage.getItem(LOCAL_OWNER_KEY)) {
-      localStorage.setItem(LOCAL_OWNER_KEY, email);
-    }
+    if (!email) return;
+    claimLocalData(email).catch((error: unknown) => {
+      console.error("FinTrack: could not verify whose cache this is", error);
+    });
   }, [email]);
 
   const value = useMemo(

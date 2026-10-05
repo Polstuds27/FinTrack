@@ -11,6 +11,7 @@ import { Navigate, Route, Routes, useLocation, useSearchParams } from "react-rou
 import { useAuth } from "./auth/AuthContext";
 import { isAuthRoute } from "./app/navigation";
 import { AppShell } from "./components/layout/AppShell";
+import { ErrorBoundary } from "./components/ui";
 import { QuickAddSheet } from "./features/transactions/QuickAddSheet";
 
 /* Public ------------------------------------------------------------------ */
@@ -207,7 +208,11 @@ export default function App() {
   return (
     <>
       <AppShell onQuickAdd={() => setQuickAddOpen(true)}>
-        <MainRoutes />
+        {/* One broken route must not unmount the shell — and, without a
+            boundary, React unmounts everything and leaves a white page. */}
+        <ErrorBoundary>
+          <MainRoutes />
+        </ErrorBoundary>
       </AppShell>
       <QuickAddSheet
         open={quickAddOpen || deepLinkAdd}

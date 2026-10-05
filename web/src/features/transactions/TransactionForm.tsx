@@ -7,7 +7,7 @@
  * Saving always goes through the repositories, so the change is written to
  * IndexedDB and queued for sync even with no connection.
  */
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeftRight,
   Bookmark,
@@ -111,6 +111,46 @@ export function TransactionForm({
     () => [...lookups.dataset.tags].sort((a, b) => a.name.localeCompare(b.name)),
     [lookups.dataset.tags],
   );
+
+  /**
+   * The account decides the currency.
+   *
+   * The picker used to keep whatever it happened to start with — the base
+   * currency, or the first account alphabetically — so selecting a PHP account
+   * could quietly record a USD amount. Re-adopted whenever the selected account
+   * changes; a manual currency choice survives until the account changes again.
+   */
+  const syncedAccountId = useRef<string | null>(null);
+  useEffect(() => {
+    const account = accounts.find((row) => row.id === fromAccount);
+    if (!account || syncedAccountId.current === account.id) return;
+    syncedAccountId.current = account.id;
+    setCurrency(account.currency);
+  }, [accounts, fromAccount]);
+
+  /**
+   * The routed editor renders this form before Dexie answers, so `transaction`
+   * arrives after mount. Hydrate once per record instead of leaving the
+   * create-mode defaults in place — otherwise an edit opened empty and saving it
+   * wrote the default currency over the account's own.
+   */
+  const hydratedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!transaction || hydratedId.current === transaction.id) return;
+    hydratedId.current = transaction.id;
+    setType(transaction.type);
+    setAmount(Math.abs(transaction.amount));
+    setCurrency(transaction.currency);
+    setFromAccount(transaction.from_account_id ?? "");
+    setToAccount(transaction.to_account_id ?? "");
+    setCategoryId(transaction.category_id ?? "");
+    setDate(transaction.date.slice(0, 10));
+    setNotes(transaction.notes ?? "");
+    setSelectedTags(transaction.tag_ids ?? []);
+    setBookmarked(transaction.is_bookmarked ?? false);
+    // Keep the account effect from re-stamping the record's own currency.
+    syncedAccountId.current = transaction.from_account_id ?? null;
+  }, [transaction]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();

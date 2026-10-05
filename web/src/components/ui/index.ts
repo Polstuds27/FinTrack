@@ -53,6 +53,7 @@ export {
 } from "./Controls";
 export { ToastProvider, useToast, type ToastTone } from "./Toast";
 export { Spinner, PageLoader } from "./Spinner";
+export { ErrorBoundary } from "./ErrorBoundary";
 export {
   ChartFrame,
   ChartLegend,

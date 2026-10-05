@@ -53,6 +53,40 @@ export async function refreshAccessToken(): Promise<boolean> {
   }
 }
 
+/**
+ * Pull a usable message out of a DRF error body.
+ *
+ * The shape varies by error type *and* by DRF version: `detail` is sometimes a
+ * string (`"mfa_required"`), sometimes a list (`["mfa_required"]`), and is
+ * absent altogether when the failure is field-level
+ * (`{"otp": ["Invalid or expired code."]}`). Reading only the string form used
+ * to hide every server message behind `Request failed (400)` — which is exactly
+ * how the two-factor challenge became unreachable and sign-in dead-ended.
+ */
+function readErrorMessage(body: unknown): string {
+  const asText = (value: unknown): string => {
+    if (typeof value === "string") return value.trim();
+    if (Array.isArray(value)) {
+      return value.map((item) => (typeof item === "string" ? item.trim() : "")).find(Boolean) ?? "";
+    }
+    return "";
+  };
+
+  if (body === null || body === undefined) return "";
+  if (typeof body !== "object") return typeof body === "string" ? body.trim() : "";
+
+  const record = body as Record<string, unknown>;
+  const detail = asText(record.detail);
+  if (detail) return detail;
+
+  // Field-level errors carry the message under the offending field name.
+  for (const value of Object.values(record)) {
+    const message = asText(value);
+    if (message) return message;
+  }
+  return "";
+}
+
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
@@ -73,8 +107,8 @@ export async function apiFetch<T>(
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
     try {
-      const body = (await res.json()) as Record<string, unknown>;
-      if (typeof body.detail === "string") detail = body.detail;
+      const message = readErrorMessage(await res.json());
+      if (message) detail = message;
     } catch {
       /* keep the generic message */
     }

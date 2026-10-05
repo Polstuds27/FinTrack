@@ -9,8 +9,10 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
+import { ownerKey } from "../auth/owner";
 import { db } from "../db";
 import type { ConflictEntry } from "../db/types";
+import { outboxCount } from "./outbox";
 import { runSync, type SyncState } from "./syncEngine";
 
 const SYNC_INTERVAL_MS = 30_000;
@@ -33,14 +35,16 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [conflicts, setConflicts] = useState<ConflictEntry[]>([]);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  const accountKey = email ?? "anonymous";
+  // Checkpoints are keyed per account: the same canonical form the owner stamp
+  // uses, so a case difference can't silently restart (or mislabel) a cursor.
+  const accountKey = email ? ownerKey(email) : "anonymous";
 
   const syncNow = useCallback(async () => {
     const next = await runSync(accountKey);
     setStatus(next);
     if (next === "idle") {
       setLastSyncedAt(new Date());
-      setPendingCount(await db.outbox.count());
+      setPendingCount(await outboxCount());
       setConflicts(await db.conflicts.toArray());
       void queryClient.invalidateQueries();
     }
