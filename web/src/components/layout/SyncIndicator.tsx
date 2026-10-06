@@ -5,15 +5,35 @@ import { IconButton } from "../ui/Button";
 
 export type SyncVisual = "synced" | "syncing" | "offline" | "pending" | "conflict" | "error" | "signed-out";
 
-const PRESENTATION: Record<SyncVisual, { label: string; Icon: LucideIcon; className: string }> = {
-  synced: { label: "Synced", Icon: CloudSync, className: "text-income" },
-  syncing: { label: "Syncing", Icon: RefreshCw, className: "text-primary animate-spin-slow" },
-  offline: { label: "Offline", Icon: WifiOff, className: "text-muted" },
-  pending: { label: "Changes saved", Icon: CloudSync, className: "text-warning" },
-  conflict: { label: "Needs attention", Icon: CircleAlert, className: "text-expense" },
-  error: { label: "Sync issue", Icon: CircleAlert, className: "text-expense" },
-  "signed-out": { label: "Local only", Icon: CloudSync, className: "text-muted" },
+const PRESENTATION: Record<SyncVisual, { Icon: LucideIcon; className: string }> = {
+  synced: { Icon: CloudSync, className: "text-income" },
+  syncing: { Icon: RefreshCw, className: "text-primary animate-spin-slow" },
+  offline: { Icon: WifiOff, className: "text-muted" },
+  pending: { Icon: CloudSync, className: "text-warning" },
+  conflict: { Icon: CircleAlert, className: "text-expense" },
+  error: { Icon: CircleAlert, className: "text-expense" },
+  "signed-out": { Icon: CloudSync, className: "text-muted" },
 };
+
+/** Labels name the required states: online/synced, syncing, offline, unsynced, failed, expired. */
+function visualLabel(visual: SyncVisual, pendingCount: number): string {
+  switch (visual) {
+    case "synced":
+      return "Online · Synced";
+    case "syncing":
+      return "Syncing changes…";
+    case "offline":
+      return "Offline · Changes saved locally";
+    case "pending":
+      return `Unsynced changes: ${pendingCount}`;
+    case "conflict":
+      return "Needs attention";
+    case "error":
+      return "Sync failed · Tap to retry";
+    case "signed-out":
+      return pendingCount > 0 ? "Session expired · Sign in to sync" : "Local only";
+  }
+}
 
 export function syncVisual(
   status: ReturnType<typeof useSync>["status"],
@@ -36,7 +56,8 @@ export function syncVisual(
 export function SyncIndicator({ compact = false }: { compact?: boolean }) {
   const { status, pendingCount, conflicts, lastSyncedAt, syncNow } = useSync();
   const visual = syncVisual(status, pendingCount, conflicts.length);
-  const { label, Icon, className } = PRESENTATION[visual];
+  const { Icon, className } = PRESENTATION[visual];
+  const label = visualLabel(visual, pendingCount);
 
   const detail =
     visual === "offline"
@@ -47,16 +68,20 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
           ? `${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting to sync.`
           : visual === "syncing"
             ? "Uploading your latest changes."
-            : visual === "signed-out"
-              ? "Sign in to sync this device."
-              : lastSyncedAt
-                ? `Last synced ${formatRelativeTime(lastSyncedAt)}.`
-                : "Everything is up to date.";
+            : visual === "error"
+              ? "Tap to try again — your local data is safe."
+              : visual === "signed-out"
+                ? pendingCount > 0
+                  ? "Your session expired with unsynced changes held safely. Sign in to send them."
+                  : "Sign in to sync this device."
+                : lastSyncedAt
+                  ? `Last synced ${formatRelativeTime(lastSyncedAt)}.`
+                  : "Everything is up to date.";
 
   return (
     <div className="flex items-center gap-2">
       <IconButton
-        label={visual === "syncing" ? "Syncing" : "Sync now"}
+        label={visual === "syncing" ? "Syncing" : visual === "error" ? "Retry sync" : "Sync now"}
         onClick={() => void syncNow()}
         disabled={status === "syncing"}
         className={className}
@@ -76,7 +101,8 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
 export function SyncStatusPanel() {
   const { status, pendingCount, conflicts, lastSyncedAt, syncNow } = useSync();
   const visual = syncVisual(status, pendingCount, conflicts.length);
-  const { label, Icon, className } = PRESENTATION[visual];
+  const { Icon, className } = PRESENTATION[visual];
+  const label = visualLabel(visual, pendingCount);
 
   const detail =
     visual === "offline"
@@ -86,9 +112,11 @@ export function SyncStatusPanel() {
         : visual === "pending"
           ? `${pendingCount} local ${pendingCount === 1 ? "change is" : "changes are"} queued for upload.`
           : visual === "error"
-            ? "We couldn't reach the server. Your local data is safe and the next attempt will retry automatically."
+            ? "We couldn't reach the server. Your local data is safe and the next attempt will retry automatically — or tap the button to try now."
             : visual === "signed-out"
-              ? "Sign in to back up this device and sync across your devices."
+              ? pendingCount > 0
+                ? "Your session expired with unsynced changes held safely. Sign in to send them — nothing was discarded."
+                : "Sign in to back up this device and sync across your devices."
               : lastSyncedAt
                 ? `Last synced ${formatRelativeTime(lastSyncedAt)}. Everything is up to date.`
                 : "Everything is up to date.";

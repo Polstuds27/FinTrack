@@ -208,7 +208,12 @@ export function TransactionForm({
       toast.push({
         tone: "success",
         title: transaction ? "Transaction updated" : `${type === "expense" ? "Expense" : type === "income" ? "Income" : "Transfer"} saved`,
-        description: transaction ? undefined : "Stored on this device and queued for sync.",
+        description:
+          typeof navigator !== "undefined" && !navigator.onLine
+            ? "Saved on this device — not yet on the server. It will sync when you're back online."
+            : transaction
+              ? undefined
+              : "Stored on this device and queued for sync.",
       });
       onSaved?.(saved.id);
     } catch (err) {

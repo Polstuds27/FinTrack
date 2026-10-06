@@ -5,6 +5,11 @@ const ACCESS_KEY = "fintrack_access";
 const REFRESH_KEY = "fintrack_refresh";
 
 export class ApiError extends Error {
+  /**
+   * HTTP status, or `0` when no response ever arrived (device offline, DNS
+   * failure, connection refused, timeout). Callers must treat `0` as
+   * "unconfirmed" — never as a rejection — and keep the local change queued.
+   */
   status: number;
 
   constructor(status: number, message: string) {
@@ -12,6 +17,29 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+/** Give up waiting for the server after this long; the change stays queued. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/** True when the failure happened before any HTTP response existed. */
+export function isNetworkError(error: unknown): boolean {
+  if (error instanceof ApiError) return error.status === 0;
+  // `fetch` rejects with a `TypeError` on DNS/connection failure and an
+  // `AbortError` DOMException on timeout.
+  if (error instanceof TypeError) return true;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name: unknown }).name === "AbortError"
+  );
+}
+
+/** True when a sync cycle should report OFFLINE rather than a generic error. */
+export function isOfflineError(error: unknown): boolean {
+  if (isNetworkError(error)) return true;
+  return typeof navigator !== "undefined" && !navigator.onLine;
 }
 
 export function getAccessToken(): string | null {
@@ -33,7 +61,23 @@ export function clearTokens(): void {
 }
 
 /** Trade the refresh token for a new access token. Returns false when expired. */
-export async function refreshAccessToken(): Promise<boolean> {
+export function refreshAccessToken(): Promise<boolean> {
+  // Single-flight: the server rotates AND blacklists on every refresh, so N
+  // concurrent 401s must share one rotation. Without this, a sync cycle plus
+  // a refetch firing together each POST the same refresh token — the first
+  // wins, the rest get "blacklisted" rejections, and a perfectly valid session
+  // degrades to signed-out with its queue stuck.
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function doRefresh(): Promise<boolean> {
   const refresh = getRefreshToken();
   if (!refresh) return false;
   try {
@@ -46,6 +90,8 @@ export async function refreshAccessToken(): Promise<boolean> {
     const data = (await res.json()) as { access?: string; refresh?: string };
     if (!data.access) return false;
     localStorage.setItem(ACCESS_KEY, data.access);
+    // Rotation hands back a new refresh token; keep it, or the next cycle
+    // replays an already-blacklisted one and signs the user out for real.
     if (data.refresh) localStorage.setItem(REFRESH_KEY, data.refresh);
     return true;
   } catch {
@@ -99,7 +145,28 @@ export async function apiFetch<T>(
   const token = getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  let res: Response;
+  try {
+    // Browsers lie: `navigator.onLine` can be true with the backend
+    // unreachable, so every request carries its own timeout and any failure
+    // below the HTTP layer is normalised to `ApiError(0)` — "unconfirmed",
+    // never "rejected".
+    const timeout =
+      typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+        ? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        : undefined;
+    res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, signal: timeout });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    const timedOut =
+      typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+    throw new ApiError(
+      0,
+      timedOut
+        ? "The server took too long to respond. Your change is saved and will sync later."
+        : "Couldn't reach the server. Your change is saved and will sync later.",
+    );
+  }
 
   if (res.status === 401 && allowRetry && (await refreshAccessToken())) {
     return apiFetch<T>(path, init, false);
