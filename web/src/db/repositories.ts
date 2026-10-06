@@ -141,7 +141,7 @@ export async function updateAccount(
 ): Promise<LocalAccount | undefined> {
   const existing = await db.accounts.get(id);
   if (!existing) return undefined;
-  const next: LocalAccount = { ...existing, ...patch, updated_at: now() };
+  const next: LocalAccount = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.accounts.put(next);
   if (patch.opening_balance !== undefined) await recalcBalances();
   await enqueueMutation("accounts", id, "update", next, existing.version);
@@ -213,7 +213,7 @@ export async function updateCategory(
 ): Promise<LocalCategory | undefined> {
   const existing = await db.categories.get(id);
   if (!existing) return undefined;
-  const next: LocalCategory = { ...existing, ...patch, updated_at: now() };
+  const next: LocalCategory = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.categories.put(next);
   await enqueueMutation("categories", id, "update", next, existing.version);
   return next;
@@ -245,7 +245,7 @@ export async function createTag(name: string): Promise<LocalTag> {
 export async function renameTag(id: string, name: string): Promise<void> {
   const existing = await db.tags.get(id);
   if (!existing) return;
-  const next = { ...existing, name, updated_at: now() };
+  const next: LocalTag = { ...existing, name, sync_status: "pending", updated_at: now() };
   await db.tags.put(next);
   await enqueueMutation("tags", id, "update", next, existing.version);
 }
@@ -313,7 +313,7 @@ export async function updateTransaction(
 ): Promise<LocalTransaction | undefined> {
   const existing = await db.transactions.get(id);
   if (!existing) return undefined;
-  const next: LocalTransaction = { ...existing, ...patch, updated_at: now() };
+  const next: LocalTransaction = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.transactions.put(next);
   await recalcBalances();
   await enqueueMutation("transactions", id, "update", next, existing.version);
@@ -363,7 +363,7 @@ export async function updateBudget(
 ): Promise<LocalBudget | undefined> {
   const existing = await db.budgets.get(id);
   if (!existing) return undefined;
-  const next: LocalBudget = { ...existing, ...patch, updated_at: now() };
+  const next: LocalBudget = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.budgets.put(next);
   await enqueueMutation("budgets", id, "update", next, existing.version);
   return next;
@@ -415,7 +415,7 @@ export async function updateRecurring(
 ): Promise<LocalRecurring | undefined> {
   const existing = await db.recurring.get(id);
   if (!existing) return undefined;
-  const next: LocalRecurring = { ...existing, ...patch, updated_at: now() };
+  const next: LocalRecurring = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.recurring.put(next);
   await enqueueMutation("recurring", id, "update", next, existing.version);
   return next;
@@ -463,7 +463,7 @@ export async function updateInstallment(
 ): Promise<LocalInstallment | undefined> {
   const existing = await db.installments.get(id);
   if (!existing) return undefined;
-  const next: LocalInstallment = { ...existing, ...patch, updated_at: now() };
+  const next: LocalInstallment = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.installments.put(next);
   await enqueueMutation("installments", id, "update", next, existing.version);
   return next;
@@ -504,7 +504,7 @@ export async function createDebt(input: DebtInput): Promise<LocalDebt> {
 export async function updateDebt(id: string, patch: Partial<LocalDebt>): Promise<LocalDebt | undefined> {
   const existing = await db.debts.get(id);
   if (!existing) return undefined;
-  const next: LocalDebt = { ...existing, ...patch, updated_at: now() };
+  const next: LocalDebt = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.debts.put(next);
   await enqueueMutation("debts", id, "update", next, existing.version);
   return next;
@@ -559,7 +559,7 @@ export async function updateSavingsGoal(
 ): Promise<LocalSavingsGoal | undefined> {
   const existing = await db.savings_goals.get(id);
   if (!existing) return undefined;
-  const next: LocalSavingsGoal = { ...existing, ...patch, updated_at: now() };
+  const next: LocalSavingsGoal = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
   await db.savings_goals.put(next);
   await enqueueMutation("savings_goals", id, "update", next, existing.version);
   return next;

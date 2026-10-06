@@ -1,4 +1,4 @@
-import { apiFetch, ApiError, getAccessToken } from "../api/client";
+import { apiFetch, ApiError, getAccessToken, isOfflineError } from "../api/client";
 import { recalcBalances } from "../db/balances";
 import { db, tableFor } from "../db";
 import type { EntityName, LocalTransaction, OutboxEntry, PushResult, SyncChange } from "../db/types";
@@ -6,6 +6,7 @@ import { fromServer, normalizeEntityName } from "./mapping";
 import {
   getCheckpoint,
   getClientId,
+  MAX_ATTEMPTS,
   pendingMutations,
   setCheckpoint,
 } from "./outbox";
@@ -38,21 +39,39 @@ async function pushRound(clientId: string): Promise<boolean> {
   const batch = await pendingMutations();
   if (batch.length === 0) return false;
 
-  const { results } = await apiFetch<{ results: PushResult[] }>("/sync/push/", {
-    method: "POST",
-    body: JSON.stringify({
-      client_id: clientId,
-      mutations: batch.map((entry: OutboxEntry) => ({
-        client_mutation_id: entry.id,
-        entity: entry.entity,
-        entity_id: entry.entity_id,
-        op: entry.op,
-        base_version: entry.base_version,
-        payload: entry.payload,
-        client_timestamp: entry.created_at,
-      })),
-    }),
-  });
+  let results: PushResult[];
+  try {
+    ({ results } = await apiFetch<{ results: PushResult[] }>("/sync/push/", {
+      method: "POST",
+      body: JSON.stringify({
+        client_id: clientId,
+        mutations: batch.map((entry: OutboxEntry) => ({
+          client_mutation_id: entry.id,
+          entity: entry.entity,
+          entity_id: entry.entity_id,
+          op: entry.op,
+          base_version: entry.base_version,
+          payload: entry.payload,
+          client_timestamp: entry.created_at,
+        })),
+      }),
+    }));
+  } catch (error) {
+    // The batch never reached the server: nothing is confirmed, nothing is
+    // lost. Record the attempt so a permanently unreachable backend parks the
+    // entries instead of spinning them forever, then abort the cycle — pulling
+    // over a dead connection would only move the cursor past unseen changes.
+    // Idempotency keys (`client_mutation_id`) make the eventual retry safe.
+    const message = error instanceof Error ? error.message : "Push failed before reaching the server";
+    for (const entry of batch) {
+      await db.outbox.update(entry.id, {
+        status: entry.attempts + 1 >= MAX_ATTEMPTS ? "failed" : "pending",
+        attempts: entry.attempts + 1,
+        last_error: message,
+      });
+    }
+    throw error;
+  }
   const byId = new Map(results.map((result) => [result.client_mutation_id, result]));
 
   for (const entry of batch) {
@@ -219,7 +238,12 @@ async function runSyncInternal(accountKey: string): Promise<SyncState> {
     }
     return "idle";
   } catch (error) {
+    // 401 means the session can't proceed — the queue stays intact so signing
+    // back in resumes exactly where this left off. Anything that failed below
+    // the HTTP layer is OFFLINE (device, DNS, timeout, refused), never a
+    // rejection: the changes are unconfirmed, not wrong.
     if (error instanceof ApiError && error.status === 401) return "signed-out";
+    if (isOfflineError(error)) return "offline";
     return "error";
   }
 }
