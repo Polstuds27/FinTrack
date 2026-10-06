@@ -6,7 +6,7 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait",
   "background_color": "#F6F8F7",
   "theme_color": "#0F766E",
   "categories": ["finance", "productivity", "utilities"],
