@@ -86,6 +86,15 @@ export async function outboxCount(): Promise<number> {
   return db.outbox.filter(ownedByCurrentAccount).count();
 }
 
+/**
+ * Every queued row regardless of owner. Signed out, the engine can send
+ * nothing — but the rows are still held on the device, and the Sync screen
+ * must say so instead of reporting a stale (or zero) "waiting" count.
+ */
+export async function outboxTotal(): Promise<number> {
+  return db.outbox.count();
+}
+
 export async function conflictEntries(): Promise<OutboxEntry[]> {
   return db.outbox
     .filter((entry) => ownedByCurrentAccount(entry) && entry.status === "conflict")

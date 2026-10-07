@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
@@ -133,6 +134,13 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
+    # Short-lived access, long-lived refresh: the app silently rotates on 401,
+    # so a user who opens FinTrack regularly never sees a login screen.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    # Sliding 7-day window: every refresh mints a NEW refresh token expiring 7
+    # days from that moment (rotation is on below), so the session only dies
+    # after 7 days of total inactivity — never while the app is in use.
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }
