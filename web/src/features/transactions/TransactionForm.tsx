@@ -16,7 +16,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import type { LocalTransaction } from "../../db/types";
-import { CURRENCIES, todayKey } from "../../design/format";
+import { CURRENCIES, fromDateTimeInput, toDateTimeInput } from "../../design/format";
 import {
   AmountInput,
   Button,
@@ -85,7 +85,12 @@ export function TransactionForm({
   );
   const [toAccount, setToAccount] = useState<string>(transaction?.to_account_id ?? "");
   const [categoryId, setCategoryId] = useState<string>(transaction?.category_id ?? "");
-  const [date, setDate] = useState(transaction ? transaction.date.slice(0, 10) : todayKey());
+  // Date AND time: defaults to the device's current moment (like the reference
+  // app's `10/7/26 (Wed) 7:54 PM`), editable for backdated entries. The old
+  // date-only picker pinned everything to local noon.
+  const [dateTime, setDateTime] = useState(() =>
+    transaction ? toDateTimeInput(transaction.date) : toDateTimeInput(new Date()),
+  );
   const [notes, setNotes] = useState(transaction?.notes ?? "");
   const [tagName, setTagName] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>(transaction?.tag_ids ?? []);
@@ -144,7 +149,7 @@ export function TransactionForm({
     setFromAccount(transaction.from_account_id ?? "");
     setToAccount(transaction.to_account_id ?? "");
     setCategoryId(transaction.category_id ?? "");
-    setDate(transaction.date.slice(0, 10));
+    setDateTime(toDateTimeInput(transaction.date));
     setNotes(transaction.notes ?? "");
     setSelectedTags(transaction.tag_ids ?? []);
     setBookmarked(transaction.is_bookmarked ?? false);
@@ -172,6 +177,10 @@ export function TransactionForm({
       setError("A transfer needs two different accounts.");
       return;
     }
+    if (!dateTime) {
+      setError("Choose a date and time.");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -190,7 +199,7 @@ export function TransactionForm({
         from_account_id: type === "income" ? null : fromAccount,
         to_account_id: type === "expense" ? null : (type === "income" ? fromAccount : toAccount),
         category_id: type === "transfer" ? null : categoryId || null,
-        date: new Date(`${date}T12:00:00`).toISOString(),
+        date: fromDateTimeInput(dateTime),
         notes: notes.trim(),
         tag_ids: tagIds,
         is_bookmarked: bookmarked,
@@ -316,11 +325,11 @@ export function TransactionForm({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Input
-          label="Date"
-          type="date"
-          value={date}
-          max={todayKey()}
-          onChange={(e) => setDate(e.target.value)}
+          label="Date & time"
+          type="datetime-local"
+          value={dateTime}
+          max={toDateTimeInput(new Date())}
+          onChange={(e) => setDateTime(e.target.value)}
           required
         />
         {type !== "transfer" && (

@@ -44,7 +44,7 @@ import {
   summarize,
   upcoming,
 } from "../analytics/engine";
-import { periodRange, rangeLabel, shiftPeriod, type Period } from "../analytics/period";
+import { inRange, periodRange, rangeLabel, shiftPeriod, type Period } from "../analytics/period";
 import { TransactionRow } from "../transactions/TransactionList";
 
 export function OverviewPage() {
@@ -87,8 +87,10 @@ export function OverviewPage() {
   );
 
   const recent = useMemo(
-    () => [...dataset.transactions].sort(byTxNewest).slice(0, 6),
-    [dataset.transactions],
+    // Scoped to the viewed month: on "November 2026" this lists November's
+    // latest six, not the six latest overall.
+    () => dataset.transactions.filter((tx) => inRange(tx.date, range)).sort(byTxNewest).slice(0, 6),
+    [dataset.transactions, range],
   );
 
   const accounts = useMemo(
