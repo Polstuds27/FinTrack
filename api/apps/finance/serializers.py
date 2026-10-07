@@ -59,15 +59,18 @@ class AccountSerializer(UserOwnedModelSerializer):
 class CategorySerializer(UserOwnedModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name", "parent", "type", "icon", "color", "is_custom"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", "name", "parent", "type", "icon", "color", "is_custom",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
-        fields = ["id", "name"]
-        read_only_fields = ["id"]
+        fields = ["id", "name", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class TransactionSerializer(UserOwnedModelSerializer):
@@ -99,8 +102,11 @@ class TransactionSerializer(UserOwnedModelSerializer):
 class BudgetSerializer(UserOwnedModelSerializer):
     class Meta:
         model = Budget
-        fields = ["id", "category", "amount", "period", "start_date", "alert_threshold"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", "category", "amount", "period", "start_date", "alert_threshold",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class RecurringRuleSerializer(UserOwnedModelSerializer):
@@ -120,8 +126,10 @@ class RecurringRuleSerializer(UserOwnedModelSerializer):
             "end_at",
             "enabled",
             "notes",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "last_run_at"]
+        read_only_fields = ["id", "last_run_at", "created_at", "updated_at"]
 
 
 class InstallmentPlanSerializer(UserOwnedModelSerializer):
@@ -141,8 +149,10 @@ class InstallmentPlanSerializer(UserOwnedModelSerializer):
             "frequency",
             "generated_at",
             "notes",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "part_amount", "generated_at"]
+        read_only_fields = ["id", "part_amount", "generated_at", "created_at", "updated_at"]
 
 
 class DebtSerializer(serializers.ModelSerializer):
@@ -157,19 +167,27 @@ class DebtSerializer(serializers.ModelSerializer):
             "currency",
             "due_date",
             "notes",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class SavingsGoalSerializer(UserOwnedModelSerializer):
     class Meta:
         model = SavingsGoal
-        fields = ["id", "name", "target_amount", "currency", "target_date", "linked_account"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", "name", "target_amount", "currency", "target_date", "linked_account",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class ExchangeRateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExchangeRate
-        fields = ["id", "base_currency", "quote_currency", "rate", "date", "source"]
-        read_only_fields = ["id"]
+        fields = [
+            "id", "base_currency", "quote_currency", "rate", "date", "source",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]

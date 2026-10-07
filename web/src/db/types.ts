@@ -22,6 +22,13 @@ interface SyncFields {
   version: number;
   deleted_at: string | null;
   sync_status: SyncStatus;
+  /**
+   * The logical record's birth moment — when it was created on a device, not
+   * when any server received it. Written once at local creation, mirrored
+   * from Neon on pull, and never modified by updates, retries, or conflict
+   * resolution. Network delivery time must never become creation time.
+   */
+  created_at: string;
   updated_at: string;
 }
 

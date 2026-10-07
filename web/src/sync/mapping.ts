@@ -50,7 +50,16 @@ export function fromServer(
   deletedAt: string | null,
 ): LocalRow {
   const updated = str(payload.updated_at, new Date().toISOString());
-  const base = { version, deleted_at: deletedAt, sync_status: "synced" as const, updated_at: updated };
+  const base = {
+    version,
+    deleted_at: deletedAt,
+    sync_status: "synced" as const,
+    // Mirror Neon's birth moment verbatim. Only pre-mirror historical events
+    // lack it (their serializers never sent it) — those fall back to the
+    // server write instant, which is the closest surviving truth.
+    created_at: str(payload.created_at, updated),
+    updated_at: updated,
+  };
 
   switch (entity) {
     case "accounts":
