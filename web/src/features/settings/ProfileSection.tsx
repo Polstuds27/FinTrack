@@ -6,16 +6,19 @@
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Save, Trash2 } from "lucide-react";
+import { LogOut, Save, Trash2 } from "lucide-react";
 import { ApiError, apiFetch } from "../../api/client";
 import { useAuth, type UserProfile } from "../../auth/AuthContext";
+import { useSync } from "../../sync/SyncContext";
 import { Button, ConfirmOverlay, Input, Select, useToast } from "../../components/ui";
 import { CURRENCIES } from "../../design/format";
+import { readProfileCache } from "../../db/profile";
 import { usePreferences } from "./preferences";
 import { Panel } from "./Panel";
 
 export function ProfileSection() {
   const { profile, refreshProfile, logout } = useAuth();
+  const { pendingCount } = useSync();
   const { preferences, update } = usePreferences();
   const toast = useToast();
   const navigate = useNavigate();
@@ -26,12 +29,29 @@ export function ProfileSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
     setFirstName(profile.first_name);
     setLastName(profile.last_name);
     setCurrency(profile.preferred_currency);
+  }, [profile]);
+
+  // Offline the live profile never arrives: initialise the form from the
+  // last-known cached identity so the screen still shows who is signed in.
+  useEffect(() => {
+    if (profile) return;
+    let cancelled = false;
+    void readProfileCache().then((cached) => {
+      if (cancelled || !cached) return;
+      setFirstName((current) => current || cached.first_name);
+      setLastName((current) => current || cached.last_name);
+      setCurrency((current) => current || cached.preferred_currency);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [profile]);
 
   async function save(event?: FormEvent) {
@@ -64,6 +84,16 @@ export function ProfileSection() {
     }
   }
 
+  async function signOut() {
+    setConfirmLogout(false);
+    setBusy(true);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } finally {
+      setBusy(false);
+    }
+  }
   async function deleteAccount() {
     setBusy(true);
     try {
@@ -140,6 +170,21 @@ export function ProfileSection() {
       </Panel>
 
       <Panel
+        title="Sign out"
+        description="Ends this session on this device and clears its local copy of your data. Anything already synced stays safe on the server."
+      >
+        <Button
+          variant="danger"
+          size="sm"
+          icon={<LogOut className="h-4 w-4" />}
+          loading={busy}
+          onClick={() => (pendingCount > 0 ? setConfirmLogout(true) : void signOut())}
+        >
+          Sign out
+        </Button>
+      </Panel>
+
+      <Panel
         title="Danger zone"
         description="Deleting your account removes every transaction, account and goal from the server."
       >
@@ -152,6 +197,16 @@ export function ProfileSection() {
           Delete account
         </Button>
       </Panel>
+
+      <ConfirmOverlay
+        open={confirmLogout}
+        busy={busy}
+        onClose={() => setConfirmLogout(false)}
+        onConfirm={() => void signOut()}
+        title="Sign out with unsynced changes?"
+        confirmLabel="Sign out anyway"
+        message={`${pendingCount} change${pendingCount === 1 ? " is" : "s are"} still waiting to sync. Signing out clears this device's local copy, including anything the server hasn't acknowledged yet.`}
+      />
 
       <ConfirmOverlay
         open={confirmDelete}

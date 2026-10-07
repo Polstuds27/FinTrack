@@ -11,6 +11,7 @@ import type {
   LocalExchangeRate,
   LocalInstallment,
   LocalNotification,
+  LocalProfile,
   LocalRecurring,
   LocalRow,
   LocalSavingsGoal,
@@ -37,6 +38,7 @@ export class FinDB extends Dexie {
   outbox!: EntityTable<OutboxEntry, "id">;
   conflicts!: EntityTable<ConflictEntry, "id">;
   meta!: EntityTable<MetaEntry, "key">;
+  profile!: EntityTable<LocalProfile, "key">;
 
   constructor() {
     super("fintrack");
@@ -192,6 +194,31 @@ export class FinDB extends Dexie {
             });
         }
       });
+
+    /**
+     * v5 adds the `profile` table: the signed-in account's display identity
+     * (name, email, currency — never secrets) for offline display. New table,
+     * so no data migration: it fills on the next successful profile fetch.
+     */
+    this.version(5).stores({
+        accounts: "id, group_id, type, archived, sync_status, updated_at",
+        account_groups: "id, sync_status, updated_at",
+        budgets: "id, category_id, period, start_date, sync_status, updated_at",
+        categories: "id, type, parent_id, sync_status, updated_at",
+        debts: "id, direction, due_date, sync_status, updated_at",
+        exchange_rates: "id, base_currency, quote_currency, date, [base_currency+quote_currency]",
+        installments: "id, from_account_id, category_id, start_date, sync_status, updated_at",
+        recurring: "id, type, from_account_id, to_account_id, category_id, next_run_at, enabled, sync_status, updated_at",
+        savings_goals: "id, linked_account_id, target_date, sync_status, updated_at",
+        tags: "id, sync_status, updated_at",
+        transactions: "id, type, from_account_id, to_account_id, category_id, recurring_id, installment_id, date, is_bookmarked, sync_status, updated_at",
+        attachments: "id, transaction_id, upload_state, created_at",
+        notifications: "id, is_read, created_at",
+        outbox: "id, entity, entity_id, status, created_at",
+        conflicts: "id, entity, entity_id, created_at",
+        meta: "key",
+        profile: "key",
+      });
   }
 }
 
@@ -264,6 +291,7 @@ export async function clearAllData(): Promise<void> {
     db.notifications,
     db.outbox,
     db.conflicts,
+    db.profile,
   ];
   await db.transaction("rw", tables, async () => {
     for (const table of tables) await table.clear();

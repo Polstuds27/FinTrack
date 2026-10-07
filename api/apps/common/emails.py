@@ -28,68 +28,49 @@ def emailjs_configured() -> bool:
     """True when EmailJS credentials are present in the environment."""
     return bool(
         settings.EMAILJS_SERVICE_ID
-        and settings.EMAILJS_TEMPLATEFP_ID
+        and settings.EMAILJS_TEMPLATE_ID
         and (settings.EMAILJS_PRIVATE_KEY or settings.EMAILJS_PUBLIC_KEY)
     )
-    
 
 
-def send_email(*, to: str, link: str = "") -> None:
-    """Send a password-reset email through EmailJS.
+def send_template_email(
+    *, to: str, subject: str, template_name: str, context: dict | None = None, to_name: str = ""
+) -> None:
+    """Render a Django template into the generic EmailJS envelope and send it.
 
-    EmailJS template variables:
-        {{email}}
-        {{link}}
-
-    Delivery problems are logged instead of raised so a mail hiccup
-    never breaks the API request.
+    New email types stop here: a template file, no dashboard work, no new env
+    vars. Failures are logged, never raised, so mail hiccups don't break API
+    requests. The envelope template owns branding; this owns content.
     """
+    from django.template.loader import render_to_string
+
+    html_body = render_to_string(f"emails/{template_name}", context or {})
     try:
         if emailjs_configured():
-            _send_via_emailjs(to=to, link=link, template=settings.EMAILJS_TEMPLATEFP_ID)
+            payload = {
+                "service_id": settings.EMAILJS_SERVICE_ID,
+                "template_id": settings.EMAILJS_TEMPLATE_ID,
+                "user_id": settings.EMAILJS_PUBLIC_KEY,
+                "accessToken": settings.EMAILJS_PRIVATE_KEY,
+                "template_params": {
+                    "email": to,
+                    "subject": subject,
+                    "to_name": to_name,
+                    "html_body": html_body,
+                },
+            }
+            _post_emailjs(payload)
         else:
             # Optional SMTP fallback
-            send_mail(
-                "Reset your FinTrack password",
-                f"Reset your password using this link:\n\n{link}",
-                settings.DEFAULT_FROM_EMAIL,
-                [to],
-            )
+            send_mail(subject, html_body, settings.DEFAULT_FROM_EMAIL, [to])
     except Exception:
-        log.exception("Could not send password reset email to %s", to)
+        log.exception("Could not send '%s' email to %s", subject, to)
 
 
-def _send_via_emailjs(*, to: str, link: str, template, name = None) -> None:
-    """POST the password-reset email to the EmailJS API."""
-
-
-    if name is not None:
-        payload = {
-            "service_id": settings.EMAILJS_SERVICE_ID,
-            "template_id": template,
-            "user_id": settings.EMAILJS_PUBLIC_KEY,
-            "accessToken": settings.EMAILJS_PRIVATE_KEY,
-            "template_params": {
-                "email": to,
-                "link": link,
-                "name": name
-            },
-        }
-    else:
-        payload = {
-            "service_id": settings.EMAILJS_SERVICE_ID,
-            "template_id": template,
-            "user_id": settings.EMAILJS_PUBLIC_KEY,
-            "accessToken": settings.EMAILJS_PRIVATE_KEY,
-            "template_params": {
-                "email": to,
-                "link": link,
-                
-            },
-        }
-
+def _post_emailjs(payload: dict) -> None:
+    """POST a ready payload to the EmailJS API (shared transport)."""
     request = urllib.request.Request(
-        "https://api.emailjs.com/api/v1.0/email/send",
+        EMAILJS_API_URL,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
@@ -98,40 +79,44 @@ def _send_via_emailjs(*, to: str, link: str, template, name = None) -> None:
         },
         method="POST",
     )
-
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             print("EmailJS SUCCESS:", response.read().decode())
-
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-
         print("EMAILJS HTTP ERROR")
         print("Status:", exc.code)
         print("Response:", body)
-
         raise
 
+
+def send_email(*, to: str, link: str = "") -> None:
+    """Send a password-reset email through the generic envelope template."""
+    send_template_email(
+        to=to,
+        subject="Reset your FinTrack password",
+        template_name="password_reset.html",
+        context={"link": link},
+    )
+
+
 def send_verification_email(*, to: str, link: str, name: str) -> None:
-    """Send a verification email through EmailJS.
+    """Send a verification email through the generic envelope template."""
+    send_template_email(
+        to=to,
+        subject="Verify your FinTrack account",
+        template_name="verify.html",
+        context={"link": link, "name": name},
+        to_name=name,
+    )
 
-    EmailJS template variables:
-        {{email}}
-        {{link}}
 
-    Delivery problems are logged instead of raised so a mail hiccup
-    never breaks the API request.
-    """
-    try:
-        if emailjs_configured():
-            _send_via_emailjs(to=to, link=link, template=settings.EMAILJS_TEMPLATEW_ID, name=name)
-        else:
-            # Optional SMTP fallback
-            send_mail(
-                "Verify your FinTrack account",
-                f"Verify your account using this link:\n\n{link}",
-                settings.DEFAULT_FROM_EMAIL,
-                [to],
-            )
-    except Exception:
-        log.exception("Could not send verification email to %s", to)
+def send_mfa_code_email(*, to: str, code: str, minutes: int = 15) -> None:
+    """Send a one-time MFA backup code. Sender only — no endpoint calls this
+    yet; the recovery-via-email flow will plug in here when approved."""
+    send_template_email(
+        to=to,
+        subject="Your FinTrack sign-in code",
+        template_name="mfa_code.html",
+        context={"code": code, "minutes": minutes},
+    )

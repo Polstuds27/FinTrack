@@ -246,6 +246,21 @@ export interface MetaEntry {
   value: string;
 }
 
+/**
+ * The signed-in account's identity, cached for offline display. Only
+ * display-level fields — never secrets: no password, no tokens. Written on
+ * every successful profile fetch, cleared with everything else on sign-out.
+ */
+export interface LocalProfile {
+  /** Single row; always `"me"`. */
+  key: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  preferred_currency: string;
+  cached_at: string;
+}
+
 export interface SyncChange {
   seq: number;
   entity: string;

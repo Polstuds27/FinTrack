@@ -9,6 +9,7 @@ import { useState, type FormEvent } from "react";
 import { KeyRound, RefreshCw, ShieldCheck, ShieldOff } from "lucide-react";
 import { ApiError, apiFetch } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
+import { isRecoveryCode, normalizeRecoveryCode } from "../auth/recovery";
 import { Alert, Badge, Button, Input, useToast } from "../../components/ui";
 import { Panel } from "./Panel";
 
@@ -31,6 +32,12 @@ export function SecuritySection() {
   const [code, setCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
   const [mfaError, setMfaError] = useState<string | null>(null);
+
+  // Backup codes, shown exactly once after minting — never fetched again.
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [regenCode, setRegenCode] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const mfaEnabled = Boolean(profile?.mfa_enabled);
 
@@ -90,12 +97,19 @@ export function SecuritySection() {
     setMfaError(null);
     setMfaBusy(true);
     try {
-      await apiFetch("/auth/mfa/confirm/", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      });
+      const data = await apiFetch<{ detail: string; recovery_codes?: string[] }>(
+        "/auth/mfa/confirm/",
+        {
+          method: "POST",
+          body: JSON.stringify({ code }),
+        },
+      );
       setChallenge(null);
       setCode("");
+      setCopied(false);
+      // Enrollment mints the first backup set: surface it now, because this
+      // response is the only time the plaintext ever exists.
+      setRecoveryCodes(data.recovery_codes ?? null);
       await refreshProfile();
       toast.push({ tone: "success", title: "Two-factor enabled" });
     } catch (err) {
@@ -105,13 +119,65 @@ export function SecuritySection() {
     }
   }
 
+  async function regenerateCodes(event: FormEvent) {
+    event.preventDefault();
+    setMfaError(null);
+    setMfaBusy(true);
+    try {
+      const data = await apiFetch<{ codes: string[]; remaining: number }>(
+        "/auth/mfa/recovery-codes/",
+        {
+          method: "POST",
+          body: JSON.stringify({ code: regenCode }),
+        },
+      );
+      setRegenCode("");
+      setCopied(false);
+      // Regeneration kills the old set server-side: the previous codes on any
+      // screenshot or note are dead the moment these appear.
+      setRecoveryCodes(data.codes);
+      await refreshProfile();
+    } catch (err) {
+      setMfaError(err instanceof ApiError ? err.message : "Couldn't generate new codes.");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function copyCodes() {
+    if (!recoveryCodes) return;
+    try {
+      await navigator.clipboard.writeText(recoveryCodes.join("\n"));
+      setCopied(true);
+    } catch {
+      setMfaError("Copy failed — select the codes manually.");
+    }
+  }
+
+  function downloadCodes() {
+    if (!recoveryCodes) return;
+    const blob = new Blob(
+      [`FinTrack recovery codes for ${profile?.email ?? "your account"}\nEach code works once. Keep them somewhere safe.\n\n${recoveryCodes.join("\n")}\n`],
+      { type: "text/plain" },
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "fintrack-recovery-codes.txt";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function disableMfa() {
     setMfaError(null);
     setMfaBusy(true);
     try {
+      // A recovery code also switches MFA off — the lost-phone path. The
+      // server tells the two apart; both travel in the same field.
+      const value = isRecoveryCode(code) ? normalizeRecoveryCode(code) : code;
       await apiFetch("/auth/mfa/disable/", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code: value }),
       });
       setCode("");
       await refreshProfile();
@@ -122,6 +188,8 @@ export function SecuritySection() {
       setMfaBusy(false);
     }
   }
+
+  const disableReady = code.replace(/\D/g, "").length === 6 || isRecoveryCode(code);
 
   return (
     <div className="space-y-4">
@@ -256,21 +324,92 @@ export function SecuritySection() {
             noValidate
           >
             <Input
-              label="Current code"
-              inputMode="numeric"
+              label="Current code or recovery code"
+              inputMode="text"
               autoComplete="one-time-code"
-              maxLength={6}
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={11}
               value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-              placeholder="123456"
+              onChange={(event) => setCode(event.target.value)}
+              placeholder="123456 or XXXXX-XXXXX"
+              hint="Lost your phone? A recovery code works here too — or request an emailed code from the sign-in screen after signing out."
               leadingIcon={<ShieldOff aria-hidden="true" className="h-4 w-4" />}
             />
-            <Button type="submit" variant="danger" size="sm" loading={mfaBusy} disabled={code.length !== 6}>
+            <Button type="submit" variant="danger" size="sm" loading={mfaBusy} disabled={!disableReady}>
               Turn off two-factor
             </Button>
           </form>
         )}
       </Panel>
+
+      {mfaEnabled && (
+        <Panel
+          title="Recovery codes"
+          description={
+            profile?.recovery_codes_remaining !== undefined
+              ? `${profile.recovery_codes_remaining} of 10 single-use codes left. Each one signs you in once when your authenticator is gone. Lost the codes too? The sign-in screen can email you a one-time code instead.`
+              : "Single-use codes that sign you in once when your authenticator is gone. Lost the codes too? The sign-in screen can email you a one-time code instead."
+          }          footer={
+            !recoveryCodes && !regenOpen ? (
+              <Button variant="ghost" size="sm" icon={<RefreshCw className="h-4 w-4" />} loading={mfaBusy} onClick={() => setRegenOpen(true)}>
+                {(profile?.recovery_codes_remaining ?? 0) > 0 ? "Regenerate codes" : "Generate codes"}
+              </Button>
+            ) : undefined
+          }
+        >
+          {recoveryCodes && recoveryCodes.length > 0 ? (
+            <div className="space-y-3">
+              <Alert tone="info" title="Save these now — they will never be shown again">
+                Copy them to a password manager or download the file. Anyone holding one can
+                sign in once as you.
+              </Alert>
+              <ul className="grid gap-1.5 sm:grid-cols-2">
+                {recoveryCodes.map((recovery) => (
+                  <li
+                    key={recovery}
+                    className="tabular rounded-lg border border-line bg-surface-sunken px-3 py-2 text-center text-sm font-medium tracking-widest text-ink select-all"
+                  >
+                    {recovery}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="primary" size="sm" loading={mfaBusy} onClick={() => void copyCodes()}>
+                  {copied ? "Copied" : "Copy all"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={downloadCodes}>
+                  Download .txt
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => { setRecoveryCodes(null); setRegenOpen(false); }}>
+                  I&apos;ve saved them
+                </Button>
+              </div>
+            </div>
+          ) : regenOpen ? (
+            <form onSubmit={regenerateCodes} className="space-y-3" noValidate>
+              <p className="text-sm text-muted">
+                Generating a new set kills the old one. Confirm it&apos;s you with a code from
+                your authenticator app.
+              </p>
+              <Input
+                label="Current authenticator code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={regenCode}
+                onChange={(event) => setRegenCode(event.target.value.replace(/\D/g, ""))}
+                placeholder="123456"
+                required
+              />
+              <Button type="submit" variant="primary" size="sm" loading={mfaBusy} disabled={regenCode.length !== 6}>
+                Generate 10 new codes
+              </Button>
+            </form>
+          ) : null}
+        </Panel>
+      )}
     </div>
   );
 }

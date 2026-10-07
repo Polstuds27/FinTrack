@@ -16,6 +16,9 @@ import { useLocalData } from "../../features/analytics/useLocalData";
 import { portfolio } from "../../features/analytics/engine";
 import { formatMoney } from "../../design/format";
 import { useSync } from "../../sync/SyncContext";
+import { db } from "../../db";
+import { PROFILE_KEY } from "../../db/profile";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Avatar } from "../ui/Primitives";
 import { Dropdown } from "../ui/Controls";
 import { IconButton } from "../ui/Button";
@@ -127,10 +130,13 @@ function UserMenu() {
   const { email, logout } = useAuth();
   const { conflicts } = useSync();
   const navigate = useNavigate();
+  // Last-known display name when the live session/email is unavailable.
+  const cached = useLiveQuery(() => db.profile.get(PROFILE_KEY), []);
+  const cachedName = cached ? `${cached.first_name} ${cached.last_name}`.trim() : "";
   return (
     <Dropdown
       label="Account menu"
-      trigger={<Avatar name={email ?? "You"} size={30} />}
+      trigger={<Avatar name={email ?? (cachedName || "You")} size={30} />}
       items={[
         {
           id: "settings",

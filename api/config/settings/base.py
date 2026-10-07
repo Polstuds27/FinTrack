@@ -101,13 +101,13 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@example.com")
 
 # EmailJS (https://www.emailjs.com/) sends transactional mail over HTTPS and is
 # the production delivery path, because hosts like Render block outbound SMTP.
-# Create an email service + template there, then fill in the IDs below; the
-# template's "To Email" field should be {{to_email}} and its body should use
-# {{message}} (plus {{link}} for the action URL).
+# There is exactly ONE template: the generic envelope, whose body is the
+# {{{html_body}}} variable. Every mail type is a Django template rendered into
+# it (see apps/common/emails.py) — no per-type dashboard templates, no extra
+# env vars. The envelope's "To Email" field must stay {{email}}.
 # When unset, mail falls back to the Django EMAIL_* backend above.
 EMAILJS_SERVICE_ID = env("EMAILJS_SERVICE_ID", default="")
-EMAILJS_TEMPLATEFP_ID = env("EMAILJS_TEMPLATEFP_ID", default="")
-EMAILJS_TEMPLATEW_ID = env("EMAILJS_TEMPLATEW_ID", default="")
+EMAILJS_TEMPLATE_ID = env("EMAILJS_TEMPLATE_ID", default="")
 # Private access token (Account > API Keys) is preferred for server-side calls;
 # the public key also works if that is all you have.
 EMAILJS_PRIVATE_KEY = env("EMAILJS_PRIVATE_KEY", default="")

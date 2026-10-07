@@ -9,6 +9,7 @@ import {
 } from "react";
 import { apiFetch, ApiError, clearTokens, getAccessToken, storeTokens } from "../api/client";
 import { clearAllData, db } from "../db";
+import { saveProfileCache } from "../db/profile";
 import { EMAIL_KEY, LOCAL_OWNER_KEY, localOwner, ownerKey } from "./owner";
 
 export interface UserProfile {
@@ -19,6 +20,8 @@ export interface UserProfile {
   preferred_currency: string;
   is_verified: boolean;
   mfa_enabled: boolean;
+  /** Unused single-use backup codes; absent (undefined) when MFA is off. */
+  recovery_codes_remaining?: number;
   date_joined?: string;
   last_login?: string | null;
 }
@@ -143,6 +146,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await apiFetch<UserProfile>("/auth/profile/");
       setProfile(data);
+      // Cache the display identity for offline use. Fire-and-forget: a cache
+      // write must never fail a refresh.
+      void saveProfileCache({
+        first_name: data.first_name ?? "",
+        last_name: data.last_name ?? "",
+        email: data.email ?? "",
+        preferred_currency: data.preferred_currency ?? "",
+      }).catch(() => {});
       return data;
     } catch {
       // An expired or revoked session must not block the shell: local data stays

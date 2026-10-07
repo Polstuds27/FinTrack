@@ -297,22 +297,20 @@ export function TransactionForm({
               </option>
             ))}
           </Select>
-          {type === "expense" && (
-            <Select
-              label="Category"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              hint={!categories.length ? "Create categories first." : undefined}
-            >
-              <option value="">Uncategorised</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.parent_id ? "↳ " : ""}
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          )}
+          <Select
+            label="Category"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            hint={!categories.length ? "Create categories first." : undefined}
+          >
+            <option value="">Uncategorised</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.parent_id ? "↳ " : ""}
+                {c.name}
+              </option>
+            ))}
+          </Select>
         </div>
       )}
 
