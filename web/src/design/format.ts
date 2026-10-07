@@ -179,21 +179,15 @@ export function todayKey(): string {
   return toDateKey(new Date());
 }
 
-/** `Today`, `Yesterday`, `Mon 12 Oct` - the list density users expect. */
+/** `Today`, `Yesterday`, `Oct 6` — yesterday/tomorrow by name, anything else bare month/day. */
 export function formatRelativeDay(value: DateLike, reference: DateLike = new Date()): string {
   const date = toDate(value);
   const ref = toDate(reference);
   const days = daysBetween(toDateKey(ref), toDateKey(date));
   if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days === -1) return "Tomorrow";
-  const sameYear = date.getFullYear() === ref.getFullYear();
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    ...(sameYear ? {} : { year: "numeric" }),
-  });
+  if (days === -1) return "Yesterday";
+  if (days === 1) return "Tomorrow";
+  return formatDate(date, date.getFullYear() === ref.getFullYear() ? "short" : "medium");
 }
 
 export function formatDate(value: DateLike, style: "short" | "medium" | "long" = "medium"): string {
@@ -310,9 +304,23 @@ export function isToday(value: DateLike): boolean {
   return isSameDay(value, new Date());
 }
 
+/** Newest creation first. Compares instants, not strings: `"…+08:00"` sorts
+ *  after `"…Z"` lexicographically even when it is the earlier moment. Rows
+ *  predating the `created_at` column sort last instead of breaking the order. */
+export function byCreatedDesc(a: { created_at?: string }, b: { created_at?: string }): number {
+  return toDate(b.created_at ?? 0).getTime() - toDate(a.created_at ?? 0).getTime();
+}
+
+/** Ledger order: newest business instant first, creation instant breaks ties. */
+export function byTxNewest(
+  a: { date: string; created_at?: string },
+  b: { date: string; created_at?: string },
+): number {
+  return toDate(b.date).getTime() - toDate(a.date).getTime() || byCreatedDesc(a, b);
+}
+
 /** `-4 days ago`, `just now`, `in 2 hours`. */
-export function formatRelativeTime(value: DateLike, reference: DateLike = new Date()): string {
-  const date = toDate(value);
+export function formatRelativeTime(value: DateLike, reference: DateLike = new Date()): string {  const date = toDate(value);
   const ref = toDate(reference);
   const diffMs = date.getTime() - ref.getTime();
   const abs = Math.abs(diffMs);

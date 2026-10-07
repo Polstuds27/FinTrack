@@ -23,7 +23,7 @@ import {
   Stat,
   useToast,
 } from "../../components/ui";
-import { formatDate, formatMoney, formatPercent, formatRelativeDay } from "../../design/format";
+import { byTxNewest, formatDate, formatMoney, formatPercent, formatRelativeDay } from "../../design/format";
 import { useLocalData } from "../analytics/useLocalData";
 import { usePreferences } from "../settings/preferences";
 import { budgetProgress } from "../analytics/engine";
@@ -70,7 +70,7 @@ export function BudgetDetailPage() {
           (!budget.category_id || tx.category_id === budget.category_id) &&
           inRange(tx.date, range),
       )
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort(byTxNewest)
       .slice(0, 25);
   }, [budget, dataset.transactions, preferences.monthStartDay]);
 

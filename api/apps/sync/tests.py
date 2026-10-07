@@ -150,6 +150,64 @@ def test_future_birth_moment_is_clamped_to_server_time():
     assert before <= account.created_at <= timezone.now()
 
 
+def test_decimal_float_amounts_are_accepted_exactly():
+    """Regression: JSON floats must not die on `max_decimal_places`.
+
+    The app sends money as JSON numbers, and `Decimal(85.3)` is really
+    85.299999999999997… in binary — which `full_clean` rejected, parking
+    every centavo amount (and the MariBank account) as failed forever.
+    Integers passed, which is why only decimal rows got stuck.
+    """
+    user = make_user()
+    client = authed(user)
+    account_id, tx_id = uuid.uuid4(), uuid.uuid4()
+
+    res = push(
+        client,
+        [
+            {
+                "client_mutation_id": str(uuid.uuid4()),
+                "entity": "accounts",
+                "entity_id": str(account_id),
+                "op": "create",
+                "base_version": 0,
+                "payload": {
+                    "name": "MariBank",
+                    "type": "debit",
+                    "currency": "PHP",
+                    "opening_balance": 85.3,
+                    "statement_day": 1,
+                    "due_day": 20,
+                    "archived": False,
+                },
+            }
+        ],
+    )
+    assert res.json()["results"][0]["status"] == "accepted"
+
+    mutation = expense_mutation(tx_id, client_timestamp="2026-10-06T04:38:09.394Z")
+    mutation["payload"].update(
+        {"amount": 970.5, "from_account_id": str(account_id), "notes": "Siomai"}
+    )
+    res = push(client, [mutation])
+    assert res.json()["results"][0]["status"] == "accepted"
+
+    account = Account.objects.get(id=account_id)
+    assert str(account.opening_balance) == "85.30"
+    tx = Transaction.objects.get(id=tx_id)
+    assert str(tx.amount) == "970.50"
+
+
+def test_genuinely_overprecise_amounts_still_rejected():
+    user = make_user()
+    client = authed(user)
+    mutation = expense_mutation(uuid.uuid4())
+    mutation["payload"]["amount"] = 85.355
+    result = push(client, [mutation]).json()["results"][0]
+    assert result["status"] == "rejected"
+    assert result["error"]["code"] == "invalid"
+
+
 def test_oct6_creation_pushed_oct7_keeps_oct6_and_pulls_it_back():
     """Scenarios A–C: offline birth Oct 6 23:30 PHT, delivered Oct 7, pulled back identical."""
     user = make_user()

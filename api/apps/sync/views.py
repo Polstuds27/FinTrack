@@ -129,6 +129,14 @@ def _clean_data(model, data):
             elif isinstance(field, models.CharField):
                 cleaned[key] = ""
             continue
+        if isinstance(value, float) and isinstance(field, models.DecimalField):
+            # JSON has no decimal type, so money arrives as binary floats and
+            # `Decimal(85.3)` is really 85.299999999999997… — which then fails
+            # `max_decimal_places` and parks the mutation as failed forever.
+            # `str()` recovers the exact decimal the user typed; genuinely
+            # over-precise input (85.355) still fails validation below, as it
+            # should.
+            value = str(value)
         cleaned[key] = value
     return cleaned
 

@@ -17,7 +17,7 @@ import {
   SegmentedControl,
 } from "../../components/ui";
 import type { LocalTransaction } from "../../db/types";
-import { formatMoney, formatRelativeDay } from "../../design/format";
+import { byTxNewest, formatMoney, formatRelativeDay } from "../../design/format";
 import { categoryIcon } from "../../design/icons";
 import { useLocalData } from "../analytics/useLocalData";
 import { toggleBookmark } from "../../db/repositories";
@@ -33,7 +33,7 @@ export function BookmarksPage() {
     const bookmarked = dataset.transactions.filter((tx) => tx.is_bookmarked);
     return sort === "amount"
       ? [...bookmarked].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-      : [...bookmarked].sort((a, b) => b.date.localeCompare(a.date));
+      : [...bookmarked].sort(byTxNewest);
   }, [dataset.transactions, sort]);
 
   return (
