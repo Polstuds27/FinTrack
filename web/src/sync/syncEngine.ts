@@ -11,7 +11,7 @@ import {
   setCheckpoint,
 } from "./outbox";
 
-export type SyncState = "idle" | "syncing" | "offline" | "signed-out" | "error";
+export type SyncState = "idle" | "syncing" | "offline" | "api-unavailable" | "signed-out" | "error";
 
 const MAX_PUSH_ROUNDS = 5;
 const MAX_PULL_ROUNDS = 10;
@@ -239,11 +239,13 @@ async function runSyncInternal(accountKey: string): Promise<SyncState> {
     return "idle";
   } catch (error) {
     // 401 means the session can't proceed — the queue stays intact so signing
-    // back in resumes exactly where this left off. Anything that failed below
-    // the HTTP layer is OFFLINE (device, DNS, timeout, refused), never a
-    // rejection: the changes are unconfirmed, not wrong.
+    // back in resumes exactly where this left off. Transport failures split
+    // two ways: the device itself is offline, or the device is online but the
+    // API is unreachable (`navigator.onLine` can't tell these apart, request
+    // outcomes can). Anything else is a genuine rejection or bug.
     if (error instanceof ApiError && error.status === 401) return "signed-out";
-    if (isOfflineError(error)) return "offline";
+    if (typeof navigator !== "undefined" && !navigator.onLine) return "offline";
+    if (isOfflineError(error)) return "api-unavailable";
     return "error";
   }
 }

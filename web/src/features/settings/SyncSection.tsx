@@ -21,6 +21,7 @@ const STATUS_TONE = {
   idle: "income",
   syncing: "primary",
   offline: "warning",
+  "api-unavailable": "warning",
   "signed-out": "neutral",
   error: "expense",
 } as const;
@@ -131,6 +132,13 @@ export function SyncSection() {
             <WifiOff aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
             You're offline. Everything you enter is stored on this device and will sync
             automatically when the connection returns.
+          </p>
+        )}
+        {status === "api-unavailable" && (
+          <p className="mt-3 flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
+            <WifiOff aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+            Your device is online but the server isn't answering. Changes stay queued and the
+            app keeps retrying with backoff — nothing to do but wait.
           </p>
         )}
         {status === "error" && (

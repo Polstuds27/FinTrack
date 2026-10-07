@@ -93,7 +93,8 @@ export function NetworkBanner() {
 
   // Reachable device, unreachable backend (or a rejected batch): surfaced with
   // a retry instead of silence — the queue itself is untouched.
-  if (online && status === "error") {
+  if (online && (status === "error" || status === "api-unavailable")) {
+    const serverDown = status === "api-unavailable";
     return (
       <div
         role="alert"
@@ -102,7 +103,9 @@ export function NetworkBanner() {
         <span className="flex min-w-0 items-center gap-2 text-sm text-ink">
           <CircleAlert aria-hidden="true" className="h-4 w-4 shrink-0 text-expense" />
           <span className="min-w-0">
-            Sync failed — your changes are safe on this device.
+            {serverDown
+              ? "FinTrack can't reach the server — your changes are safe on this device and will send automatically."
+              : "Sync failed — your changes are safe on this device."}
             {pendingCount > 0 && ` ${pendingCount} waiting.`}
           </span>
         </span>

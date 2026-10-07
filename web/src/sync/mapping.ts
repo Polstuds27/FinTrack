@@ -298,5 +298,10 @@ export function normalizeEntityName(name: string): EntityName | null {
   // `recurrings` is accepted by the server as an alias; normalise it to the table.
   if (lower === "recurrings" || lower === "recurring_rules") return "recurring";
   if (lower === "savings_goal") return "savings_goals";
+  // Plural table names are accepted as-is (the docstring promises either
+  // spelling, and a future server change echoing table names must not
+  // silently drop changes on the floor).
+  const tables = new Set<string>(Object.values(SERVER_TO_LOCAL));
+  if (tables.has(lower)) return lower as EntityName;
   return null;
 }
