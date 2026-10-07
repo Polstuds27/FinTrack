@@ -17,4 +17,6 @@ urlpatterns = [
     path("mfa/confirm/", views.MfaConfirmView.as_view()),
     path("mfa/disable/", views.MfaDisableView.as_view()),
     path("mfa/regenerate/", views.MfaRegenerateView.as_view()),
+    path("mfa/recovery-codes/", views.MfaRecoveryCodesView.as_view()),
+    path("mfa/email/request/", views.MfaEmailRequestView.as_view()),
 ]

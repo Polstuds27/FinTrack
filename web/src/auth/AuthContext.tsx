@@ -20,6 +20,8 @@ export interface UserProfile {
   preferred_currency: string;
   is_verified: boolean;
   mfa_enabled: boolean;
+  /** Unused single-use backup codes; absent (undefined) when MFA is off. */
+  recovery_codes_remaining?: number;
   date_joined?: string;
   last_login?: string | null;
 }

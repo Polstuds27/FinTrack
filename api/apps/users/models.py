@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -45,3 +47,53 @@ class User(AbstractUser):
 
     def __str__(self) -> str:
         return self.email
+
+
+class RecoveryCode(models.Model):
+    """Single-use MFA backup codes. Only hashes are stored — a database leak
+    must not hand out second factors. One row per code so use is tracked
+    individually and regenerating invalidates the whole set at once."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="mfa_recovery_codes"
+    )
+    code_hash = models.CharField(max_length=64, db_index=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "code_hash")
+
+    @property
+    def used(self) -> bool:
+        return self.used_at is not None
+
+    def mark_used(self) -> None:
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])
+
+
+class MfaEmailChallenge(models.Model):
+    """Single-use email OTP for MFA recovery (lost phone AND lost backup codes).
+
+    Requested with just an email address, so the plaintext code is emailed and
+    only its hash is stored — same doctrine as backup codes. Short-lived,
+    attempt-capped, and one-per-user at a time (a new request kills the old).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="mfa_email_challenges"
+    )
+    code_hash = models.CharField(max_length=64, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def used(self) -> bool:
+        return self.used_at is not None
+
+    def mark_used(self) -> None:
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])

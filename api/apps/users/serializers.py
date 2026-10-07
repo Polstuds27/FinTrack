@@ -48,12 +48,20 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     mfa_enabled = serializers.BooleanField(read_only=True)
+    recovery_codes_remaining = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ["email", "first_name", "last_name", "preferred_currency", "is_verified",
-                  "mfa_enabled", "date_joined"]
-        read_only_fields = ["email", "is_verified", "mfa_enabled", "date_joined"]
+                  "mfa_enabled", "recovery_codes_remaining", "date_joined"]
+        read_only_fields = [
+            "email", "is_verified", "mfa_enabled", "recovery_codes_remaining", "date_joined",
+        ]
+
+    def get_recovery_codes_remaining(self, user) -> int:
+        from .recovery import remaining_recovery_codes
+
+        return remaining_recovery_codes(user) if user.mfa_enabled else 0
 
     def validate_preferred_currency(self, value: str) -> str:
         value = value.upper().strip()
@@ -118,32 +126,122 @@ class MfaConfirmSerializer(serializers.Serializer):
         return value
 
     def save(self, **kwargs):
+        from .recovery import mint_recovery_codes
+
         user = self.context["request"].user
         user.mfa_secret = user.mfa_pending_secret
         user.mfa_pending_secret = ""
         user.mfa_enabled = True
         user.save(update_fields=["mfa_secret", "mfa_pending_secret", "mfa_enabled"])
+        # First backup set is minted at enrollment so there is never an MFA
+        # account without an escape hatch; shown once by the view.
+        user.recovery_codes = mint_recovery_codes(user)
         return user
 
 
 class MfaDisableSerializer(serializers.Serializer):
-    code = serializers.CharField(max_length=6, min_length=6)
+    # Either a 6-digit TOTP or an XXXXX-XXXXX recovery code (lost phone path).
+    code = serializers.CharField(max_length=16)
 
     def validate_code(self, value: str) -> str:
+        from .recovery import (
+            check_email_challenge,
+            find_unused_code,
+            looks_like_email_code,
+            looks_like_recovery_code,
+        )
         from .totp import verify_totp
 
         user = self.context["request"].user
-        if not user.mfa_enabled or not verify_totp(user.mfa_secret, value):
-            raise serializers.ValidationError("Invalid or expired code.")
-        return value
+        if not user.mfa_enabled:
+            raise serializers.ValidationError("Two-factor is not enabled.")
+        value = (value or "").strip()
+        if verify_totp(user.mfa_secret, value):
+            return value
+        if looks_like_recovery_code(value) and find_unused_code(user, value) is not None:
+            return value
+        # Email-OTP path (lost phone AND lost backup codes): misses count
+        # against the guess budget here, consumption happens in `save()`.
+        if looks_like_email_code(value) and check_email_challenge(user, value):
+            return value
+        raise serializers.ValidationError("Invalid or expired code.")
 
     def save(self, **kwargs):
+        from .recovery import (
+            find_unused_code,
+            looks_like_email_code,
+            looks_like_recovery_code,
+            verify_email_challenge,
+        )
+
         user = self.context["request"].user
+        value = (self.validated_data["code"] or "").strip()
+        if looks_like_recovery_code(value):
+            code = find_unused_code(user, value)
+            if code is None:
+                raise serializers.ValidationError({"code": "That recovery code was already used."})
+            code.mark_used()
+        elif looks_like_email_code(value):
+            if not verify_email_challenge(user, value):
+                raise serializers.ValidationError(
+                    {"code": "That email code is invalid or expired."}
+                )
         user.mfa_enabled = False
         user.mfa_secret = ""
         user.mfa_pending_secret = ""
         user.save(update_fields=["mfa_enabled", "mfa_secret", "mfa_pending_secret"])
         return user
+
+
+class MfaEmailRequestSerializer(serializers.Serializer):
+    """Last-resort recovery: email a one-time sign-in code.
+
+    Deliberately account-blind — validation never reveals whether the email
+    belongs to an MFA-enabled account. The lookup, cooldown, and send all
+    happen in `save()`, and the response is identical either way.
+    """
+
+    email = serializers.EmailField()
+
+    def save(self, **kwargs):
+        from .recovery import request_email_challenge
+
+        try:
+            user = User.objects.get(email__iexact=self.validated_data["email"])
+        except User.DoesNotExist:
+            return None
+        if not user.mfa_enabled:
+            return None
+        code = request_email_challenge(user)
+        if code is None:
+            return None  # cooldown: silent, same response
+        from apps.common.emails import send_mfa_code_email
+
+        send_mfa_code_email(to=user.email, code=code)
+        return code
+
+
+class MfaRecoveryCodesSerializer(serializers.Serializer):
+    """Mint a fresh backup set, invalidating the old one. When MFA is already
+    on, a current TOTP must accompany the request — otherwise anyone holding a
+    logged-in session could mint themselves a permanent backdoor."""
+
+    code = serializers.CharField(max_length=6, min_length=6, required=False, allow_blank=True)
+
+    def validate_code(self, value: str) -> str:
+        from .totp import verify_totp
+
+        user = self.context["request"].user
+        if user.mfa_enabled and not verify_totp(user.mfa_secret, value or ""):
+            raise serializers.ValidationError("Enter a valid code from your authenticator app.")
+        return value or ""
+
+    def save(self, **kwargs):
+        from .recovery import CODE_COUNT, mint_recovery_codes, remaining_recovery_codes
+
+        user = self.context["request"].user
+        codes = mint_recovery_codes(user)
+        return {"codes": codes, "remaining": remaining_recovery_codes(user), "total": CODE_COUNT}
 
 
 class RefreshSerializer(TokenRefreshSerializer):

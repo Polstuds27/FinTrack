@@ -1,0 +1,36 @@
+<div style="display: inline-block; padding: 6px 10px; border-radius: 999px; background-color: #063f3b; color: #5eead4; font-size: 12px; font-weight: 600; margin-bottom: 18px; font-family: Arial, Helvetica, sans-serif;">
+  Verify Email
+</div>
+
+<h1 style="margin: 0 0 16px 0; font-size: 28px; line-height: 1.25; font-weight: 700; color: #f8fafc; font-family: Arial, Helvetica, sans-serif;">
+  Verify your account
+</h1>
+
+<p style="margin: 0 0 18px 0; font-size: 15px; line-height: 1.7; color: #94a3b8; font-family: Arial, Helvetica, sans-serif;">
+  Hi{% if name %} {{ name }}{% endif %}, welcome to
+  <strong style="color: #e2e8f0; font-family: Arial, Helvetica, sans-serif;">FinTrack</strong>.
+  Confirm your email address to finish setting up your account.
+</p>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="{{ link }}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #2dd4bf; color: #042f2e; text-decoration: none; border-radius: 9px; font-size: 15px; font-weight: 700; font-family: Arial, Helvetica, sans-serif;">
+    Verify my account →
+  </a>
+</div>
+
+<p style="margin: 28px 0 8px 0; font-size: 13px; color: #64748b; font-family: Arial, Helvetica, sans-serif;">
+  If the button doesn't work, copy and paste this link into your browser:
+</p>
+
+<p style="margin: 0; font-size: 12px; line-height: 1.6; word-break: break-all; font-family: Arial, Helvetica, sans-serif;">
+  <a href="{{ link }}" target="_blank" style="color: #2dd4bf; text-decoration: none; font-family: Arial, Helvetica, sans-serif;">
+    {{ link }}
+  </a>
+</p>
+
+<div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #172633;">
+  <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #64748b; font-family: Arial, Helvetica, sans-serif;">
+    Didn't create a FinTrack account?
+    <strong style="color: #94a3b8; font-family: Arial, Helvetica, sans-serif;">You can safely ignore this email.</strong>
+  </p>
+</div>
