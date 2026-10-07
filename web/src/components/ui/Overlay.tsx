@@ -49,43 +49,59 @@ export function Overlay({
 }: OverlayProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocus = useRef<HTMLElement | null>(null);
+  // Callbacks arrive as fresh closures from most call sites (inline
+  // `onClose={() => ...}`); reading them through refs keeps the lifecycle
+  // effect independent of their identity. Before this, EVERY parent render
+  // tore the effect down and rebuilt it — and the teardown re-focused the
+  // opener while the setup timer focused the panel, so typing a single
+  // character into any sheet input dismissed the mobile keyboard.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  // Autofocus + focus-restore run once per opening, tracked by ref instead of
+  // effect identity so re-renders can never replay them mid-session.
+  const openedRef = useRef(false);
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab" || !panelRef.current) return;
-      // Keep focus inside the dialog: money entry must not wander into the page behind.
-      const nodes = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        (node) => node.offsetParent !== null,
-      );
-      if (nodes.length === 0) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      }
-    },
-    [busy, onClose],
-  );
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.key === "Escape" && !busyRef.current) {
+      event.stopPropagation();
+      onCloseRef.current();
+      return;
+    }
+    if (event.key !== "Tab" || !panelRef.current) return;
+    // Keep focus inside the dialog: money entry must not wander into the page behind.
+    const nodes = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (node) => node.offsetParent !== null,
+    );
+    if (nodes.length === 0) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    }
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      openedRef.current = false;
+      return;
+    }
+    if (openedRef.current) return;
+    openedRef.current = true;
     restoreFocus.current = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     document.addEventListener("keydown", handleKeyDown, true);
 
     const timer = window.setTimeout(() => {
-      const target = panelRef.current?.querySelector<HTMLElement>("[data-autofocus]");
-      (target ?? panelRef.current)?.focus();
+      // Focus an explicit target only; falling back to the panel div steals
+      // focus from whatever the user is typing into.
+      panelRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     }, 20);
 
     return () => {
