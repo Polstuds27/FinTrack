@@ -120,7 +120,7 @@ export function SyncSection() {
           </>
         }
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 pb-1">
           <Badge tone={STATUS_TONE[status] ?? "neutral"}>{status}</Badge>
           <span className="text-sm text-muted">
             {status === "signed-out" && held > 0 ? (

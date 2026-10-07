@@ -49,6 +49,7 @@ export function AmountInput({
         id={id}
         type="text"
         inputMode="decimal"
+        enterKeyHint="done"
         autoComplete="off"
         autoFocus={autoFocus}
         disabled={disabled}
@@ -70,13 +71,23 @@ export function AmountInput({
         placeholder="0.00"
         className={`tabular w-full min-w-0 bg-transparent font-semibold tracking-tight outline-none ${textSize} ${toneClass} placeholder:text-faint`}
       />
-      {text && !disabled && (
-        <IconButton label="Clear amount" size="sm" onClick={() => { setText(""); onChange(0); }}>
+      {/* Always mounted, visibility-toggled: mounting the button on the first
+          digit reflows this row, and several Android keyboards dismiss the
+          moment the focused input shifts underneath them. Disabled while
+          hidden so it never takes focus or enters the dialog tab trap. */}
+      <span className={`shrink-0 ${text && !disabled ? "" : "invisible"}`} aria-hidden="true">
+        <IconButton
+          label="Clear amount"
+          size="sm"
+          disabled={!text || disabled}
+          onClick={() => { setText(""); onChange(0); }}
+          tabIndex={-1}
+        >
           <span aria-hidden="true" className="text-xs font-medium text-muted">
             Clear
           </span>
         </IconButton>
-      )}
+      </span>
     </div>
   );
 }
@@ -223,26 +234,56 @@ export function Dropdown({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  // Fixed positioning escapes `overflow-hidden` ancestors (e.g. the rounded
+  // group cards on the Accounts page, which used to clip the menu invisibly).
+  const [placement, setPlacement] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
 
   useEffect(() => {
     if (!open) return;
+    const place = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const below = rect.bottom + 4;
+      // Flip upward when there is no room below; menus are short (~200px).
+      const openUp = below + 208 > window.innerHeight && rect.top - 208 > 0;
+      setPlacement(
+        align === "end"
+          ? {
+              right: Math.max(8, window.innerWidth - rect.right),
+              ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: below }),
+            }
+          : {
+              left: Math.max(8, rect.left),
+              ...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: below }),
+            },
+      );
+    };
+    place();
     const onPointerDown = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    // A fixed menu can't follow a scroll, so dismiss instead of stranding it.
+    const onScroll = () => setOpen(false);
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onScroll);
+    document.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onScroll);
+      document.removeEventListener("scroll", onScroll, true);
     };
-  }, [open]);
+  }, [open, align]);
 
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -256,9 +297,8 @@ export function Dropdown({
         <div
           role="menu"
           aria-label={label}
-          className={`absolute z-40 mt-1 min-w-44 animate-rise rounded-xl border border-line bg-surface py-1 shadow-overlay ${
-            align === "end" ? "right-0" : "left-0"
-          }`}
+          style={placement}
+          className="fixed z-50 min-w-44 animate-rise rounded-xl border border-line bg-surface py-1 shadow-overlay"
         >
           {items.map((item) => (
             <button
