@@ -12,7 +12,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ownerKey } from "../auth/owner";
 import { db } from "../db";
 import type { ConflictEntry } from "../db/types";
-import { outboxCount, getMeta, setMeta } from "./outbox";
+import { outboxCount, getMeta, setMeta, releaseWronglyParked } from "./outbox";
 import { runSync, type SyncState } from "./syncEngine";
 
 const BASE_SYNC_INTERVAL_MS = 30_000;
@@ -79,7 +79,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [runCycle]);
 
   // Restored timestamp first: React state forgets across reloads, the meta
-  // table doesn't.
+  // table doesn't. The amnesty runs alongside it so wrongly-parked entries
+  // rejoin the push batch before the first cycle of this launch.
   useEffect(() => {
     void getMeta(LAST_SYNC_KEY).then((value) => {
       if (value) {
@@ -87,7 +88,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         if (!Number.isNaN(parsed.getTime())) setLastSyncedAt(parsed);
       }
     });
-  }, []);
+    void releaseWronglyParked().then((released) => {
+      if (released > 0) void syncNow();
+    });
+  }, [syncNow]);
 
   useEffect(() => {
     if (!isAuthenticated) {
