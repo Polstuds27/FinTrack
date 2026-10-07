@@ -12,10 +12,14 @@ import { useAuth } from "../auth/AuthContext";
 import { ownerKey } from "../auth/owner";
 import { db } from "../db";
 import type { ConflictEntry } from "../db/types";
-import { outboxCount } from "./outbox";
+import { outboxCount, getMeta, setMeta } from "./outbox";
 import { runSync, type SyncState } from "./syncEngine";
 
-const SYNC_INTERVAL_MS = 30_000;
+const BASE_SYNC_INTERVAL_MS = 30_000;
+const MAX_SYNC_INTERVAL_MS = 300_000;
+
+/** Persisted so "last synced" survives reloads — React state alone forgets. */
+const LAST_SYNC_KEY = "last_sync_at";
 
 interface SyncContextValue {
   status: SyncState;
@@ -39,14 +43,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   // uses, so a case difference can't silently restart (or mislabel) a cursor.
   const accountKey = email ? ownerKey(email) : "anonymous";
 
-  const syncNow = useCallback(async () => {
+  const runCycle = useCallback(async (): Promise<SyncState> => {
     if (!isAuthenticated) {
       setStatus("signed-out");
       // Signed out is still a state the Sync screen reports on: refresh the
       // numbers so it shows this device's held queue, not a stale snapshot.
       setPendingCount(await outboxCount());
       setConflicts(await db.conflicts.toArray());
-      return;
+      return "signed-out";
     }
     // The indicator's "Syncing…" state never appeared before: no code path
     // ever set it. Emit it here so the UI reflects an in-flight cycle.
@@ -59,20 +63,39 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     setPendingCount(await outboxCount());
     setConflicts(await db.conflicts.toArray());
     if (next === "idle") {
-      setLastSyncedAt(new Date());
+      const now = new Date();
+      setLastSyncedAt(now);
+      // Stored UTC ISO; display localises to Asia/Manila in `formatDateTime`.
+      await setMeta(LAST_SYNC_KEY, now.toISOString());
       void queryClient.invalidateQueries();
     } else if (next === "error") {
       void queryClient.invalidateQueries();
     }
+    return next;
   }, [accountKey, isAuthenticated, queryClient]);
+
+  const syncNow = useCallback(async () => {
+    await runCycle();
+  }, [runCycle]);
+
+  // Restored timestamp first: React state forgets across reloads, the meta
+  // table doesn't.
+  useEffect(() => {
+    void getMeta(LAST_SYNC_KEY).then((value) => {
+      if (value) {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) setLastSyncedAt(parsed);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
       setStatus("signed-out");
       return;
     }
-    void syncNow();
-  }, [isAuthenticated, syncNow]);
+    void runCycle();
+  }, [isAuthenticated, runCycle]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -84,7 +107,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       void outboxCount().then(setPendingCount);
     };
     // Returning to the tab (or the installed PWA) resumes sync without
-    // requiring a reload — the 30s interval alone could leave a returning user
+    // requiring a reload — the interval alone could leave a returning user
     // staring at stale state.
     const onVisible = () => {
       if (document.visibilityState === "visible") void syncNow();
@@ -92,14 +115,30 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     document.addEventListener("visibilitychange", onVisible);
-    const timer = window.setInterval(() => void syncNow(), SYNC_INTERVAL_MS);
+    // Backoff, not a hammer: consecutive failures double the delay
+    // (30s → 60s → 120s → … capped at 5min) and any success resets it. While
+    // offline the early return costs nothing; while the API is down this
+    // stops the client from pointlessly knocking every 30 seconds.
+    let cancelled = false;
+    let timer = 0;
+    let failures = 0;
+    const loop = async () => {
+      if (cancelled) return;
+      const outcome = await runCycle();
+      if (cancelled) return;
+      failures = outcome === "idle" ? 0 : failures + 1;
+      const delay = Math.min(BASE_SYNC_INTERVAL_MS * 2 ** failures, MAX_SYNC_INTERVAL_MS);
+      timer = window.setTimeout(loop, delay);
+    };
+    timer = window.setTimeout(loop, BASE_SYNC_INTERVAL_MS);
     return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       document.removeEventListener("visibilitychange", onVisible);
-      window.clearInterval(timer);
     };
-  }, [isAuthenticated, syncNow]);
+  }, [isAuthenticated, runCycle, syncNow]);
 
   const value = useMemo(
     () => ({ status, pendingCount, conflicts, lastSyncedAt, syncNow }),

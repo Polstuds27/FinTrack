@@ -40,6 +40,12 @@ export async function enqueueMutation(
       // Queued by an account that isn't signed in: drop it rather than merge
       // this account's values into someone else's mutation.
       await db.outbox.delete(pending.id);
+    } else if (op === "delete" && pending.op === "create") {
+      // Created and deleted before ever reaching the server: net no-op. Drop
+      // the queued create instead of pushing an emptied row that Neon must
+      // then reject or, worse, store as a phantom record.
+      await db.outbox.delete(pending.id);
+      return;
     } else {
       // Same row already queued: keep the original create/insert and merge the new values.
       const mergedOp = pending.op === "create" ? "create" : op;

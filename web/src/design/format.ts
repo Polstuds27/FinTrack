@@ -205,8 +205,18 @@ export function formatDate(value: DateLike, style: "short" | "medium" | "long" =
   return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+/**
+ * User-facing clock times render in Asia/Manila (UTC+08:00, Philippine Time).
+ * The server stores timezone-aware UTC; the IANA name — never a hardcoded +8
+ * offset — converts correctly across DST-free Manila and travelling devices.
+ * Date-only values intentionally stay device-local: they are calendar days,
+ * not instants, and a timezone shift could move them to the wrong date.
+ */
+export const DISPLAY_TIME_ZONE = "Asia/Manila";
+
 export function formatDateTime(value: DateLike): string {
   return toDate(value).toLocaleString(undefined, {
+    timeZone: DISPLAY_TIME_ZONE,
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -216,7 +226,11 @@ export function formatDateTime(value: DateLike): string {
 }
 
 export function formatTime(value: DateLike): string {
-  return toDate(value).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return toDate(value).toLocaleTimeString(undefined, {
+    timeZone: DISPLAY_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 /** Whole days from `a` to `b` (positive when `b` is later). */

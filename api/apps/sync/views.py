@@ -11,7 +11,8 @@ from apps.finance.services import recompute_account_balance
 
 from .models import SyncCheckpoint, SyncEvent, SyncMutation
 from .serializers import PullSerializer, PushSerializer
-from .services import ENTITY_MAP, record_event as _record_event
+from .services import ENTITY_MAP
+from .services import record_event as _record_event
 
 # Client-facing plural table name -> server entity name
 ENTITY_ALIASES = {
@@ -245,6 +246,22 @@ def _apply_delete(user, entity, obj, mutation):
         # Already gone (soft delete) - keep delete idempotent.
         version = obj.version if obj else mutation["base_version"]
         return _result(mutation, "accepted", server_version=version)
+
+    if mutation["base_version"] != obj.version:
+        # Someone changed the row after this client last saw it: deleting
+        # would silently discard their work, so surface a conflict instead.
+        return _result(
+            mutation,
+            "conflict",
+            server_version=obj.version,
+            error={
+                "code": "version_mismatch",
+                "message": (
+                    f"server is at v{obj.version}, "
+                    f"client based on v{mutation['base_version']}"
+                ),
+            },
+        )
 
     obj.deleted_at = timezone.now()
     obj.version += 1

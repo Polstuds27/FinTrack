@@ -1,14 +1,14 @@
-import { CircleAlert, CloudSync, RefreshCw, WifiOff, type LucideIcon } from "lucide-react";
+import { CircleAlert, CloudOff, CloudSync, RefreshCw, WifiOff, type LucideIcon } from "lucide-react";
 import { useSync } from "../../sync/SyncContext";
+import { syncVisual, type SyncVisual } from "../../sync/status";
 import { formatRelativeTime } from "../../design/format";
 import { IconButton } from "../ui/Button";
-
-export type SyncVisual = "synced" | "syncing" | "offline" | "pending" | "conflict" | "error" | "signed-out";
 
 const PRESENTATION: Record<SyncVisual, { Icon: LucideIcon; className: string }> = {
   synced: { Icon: CloudSync, className: "text-income" },
   syncing: { Icon: RefreshCw, className: "text-primary animate-spin-slow" },
   offline: { Icon: WifiOff, className: "text-muted" },
+  "api-unavailable": { Icon: CloudOff, className: "text-warning" },
   pending: { Icon: CloudSync, className: "text-warning" },
   conflict: { Icon: CircleAlert, className: "text-expense" },
   error: { Icon: CircleAlert, className: "text-expense" },
@@ -24,6 +24,8 @@ function visualLabel(visual: SyncVisual, pendingCount: number): string {
       return "Syncing changes…";
     case "offline":
       return "Offline · Changes saved locally";
+    case "api-unavailable":
+      return "Server unreachable · Will retry";
     case "pending":
       return `Unsynced changes: ${pendingCount}`;
     case "conflict":
@@ -33,20 +35,6 @@ function visualLabel(visual: SyncVisual, pendingCount: number): string {
     case "signed-out":
       return pendingCount > 0 ? "Session expired · Sign in to sync" : "Local only";
   }
-}
-
-export function syncVisual(
-  status: ReturnType<typeof useSync>["status"],
-  pendingCount: number,
-  conflictCount: number,
-): SyncVisual {
-  if (status === "syncing") return "syncing";
-  if (status === "offline") return "offline";
-  if (conflictCount > 0) return "conflict";
-  if (pendingCount > 0) return "pending";
-  if (status === "error") return "error";
-  if (status === "signed-out") return "signed-out";
-  return "synced";
 }
 
 /**
@@ -62,7 +50,9 @@ export function SyncIndicator({ compact = false }: { compact?: boolean }) {
   const detail =
     visual === "offline"
       ? "Saved on this device. It will sync when you're back online."
-      : visual === "conflict"
+      : visual === "api-unavailable"
+        ? "Your connection is up but FinTrack can't reach the server. Retrying automatically — changes stay queued."
+        : visual === "conflict"
         ? `${conflicts.length} ${conflicts.length === 1 ? "record needs" : "records need"} your attention.`
         : visual === "pending"
           ? `${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting to sync.`
@@ -107,7 +97,9 @@ export function SyncStatusPanel() {
   const detail =
     visual === "offline"
       ? "You're offline. Your changes are saved on this device and will sync automatically when you're back online."
-      : visual === "conflict"
+      : visual === "api-unavailable"
+        ? "Your device is online but the FinTrack server isn't answering. Your changes stay queued and sync resumes on its own — no need to keep tapping."
+        : visual === "conflict"
         ? "Some records were changed on another device while you had unsynced edits. Review them to pick which version to keep."
         : visual === "pending"
           ? `${pendingCount} local ${pendingCount === 1 ? "change is" : "changes are"} queued for upload.`
