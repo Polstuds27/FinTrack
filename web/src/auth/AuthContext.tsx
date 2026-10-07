@@ -115,6 +115,24 @@ export async function eraseDeviceData(): Promise<never> {
   throw new Error("eraseDeviceData: reload did not happen");
 }
 
+/** The raw wipe failure behind the last CACHE_CLAIM_ERROR, if any. */
+interface WipeFailure {
+  name: string;
+  message: string;
+}
+
+let lastWipeFailure: WipeFailure | null = null;
+
+/** Technical detail for the recovery panel — never shown as the headline. */
+export function getLastWipeFailure(): WipeFailure | null {
+  return lastWipeFailure;
+}
+
+function describeFailure(error: unknown): WipeFailure {
+  if (error instanceof Error) return { name: error.name || "Error", message: error.message };
+  return { name: "Unknown", message: String(error) };
+}
+
 const CHECKPOINT_PREFIX = "last_seq:";
 
 /**
@@ -150,13 +168,37 @@ async function hasForeignResidue(owner: string): Promise<boolean> {
  * a failed wipe throws instead of pretending, so callers leave the user signed
  * out rather than attributing foreign rows to them.
  */
-async function claimLocalData(nextEmail: string): Promise<void> {
+async function claimLocalData(nextEmail: string, options?: { repair?: boolean }): Promise<void> {
   const owner = ownerKey(nextEmail);
   if (localOwner() !== owner || (await hasForeignResidue(owner))) {
     try {
       await clearAllData();
-    } catch {
-      throw new ApiError(500, CACHE_CLAIM_ERROR);
+    } catch (error) {
+      // This point is only reachable with valid credentials — the server
+      // already accepted the password and second factor — so a broken wipe
+      // must not be a dead end: escalate to deleting the whole database
+      // before refusing sign-in. A deleted database holds no rows at all, so
+      // the never-attribute-foreign-rows invariant still holds exactly.
+      // Only the explicit sign-in path opts in (`repair: true`); the silent
+      // boot check never destroys data on its own.
+      if (!options?.repair) {
+        lastWipeFailure = describeFailure(error);
+        console.error("FinTrack: local cache wipe failed", lastWipeFailure);
+        throw new ApiError(500, CACHE_CLAIM_ERROR);
+      }
+      try {
+        await Promise.race([
+          db.delete(),
+          new Promise((resolve) => window.setTimeout(resolve, 8000)),
+        ]);
+        // Prove the database is usable again before stamping ownership of it.
+        await db.open();
+        console.warn("FinTrack: cache wipe failed; recovered with a full database reset");
+      } catch (repairError) {
+        lastWipeFailure = describeFailure(repairError);
+        console.error("FinTrack: local cache wipe and repair failed", lastWipeFailure);
+        throw new ApiError(500, CACHE_CLAIM_ERROR);
+      }
     }
   }
   localStorage.setItem(LOCAL_OWNER_KEY, owner);
@@ -206,10 +248,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             otp ? { email: nextEmail, password, otp } : { email: nextEmail, password },
           ),
         });
-        // Claim the cache *before* a token exists: if the previous account's
-        // rows can't be removed the sign-in fails, so a browser holding someone
-        // else's data is never reachable — not even across a reload.
-        await claimLocalData(nextEmail);
+        // Claim the cache *before* a token exists, with repair: the server
+        // already accepted these credentials, so a damaged local database is
+        // reset rather than blocking a valid sign-in.
+        await claimLocalData(nextEmail, { repair: true });
         storeTokens(data.access, data.refresh);
         localStorage.setItem(EMAIL_KEY, nextEmail);
         setEmail(nextEmail);
