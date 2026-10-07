@@ -47,6 +47,13 @@ export interface AuthState {
   verifyEmail: (uid: string, token: string) => Promise<void>;
   refreshProfile: () => Promise<UserProfile | null>;
   setProfile: (profile: UserProfile) => void;
+  /**
+   * Drop the stored credentials and treat the session as logged out — without
+   * touching IndexedDB. Unlike `logout`, the held queue survives so signing
+   * back in resumes it. For a session wedged on an invalid token that can no
+   * longer rotate: flushing lets the user reach the sign-in form again.
+   */
+  flushCredentials: () => void;
 }
 
 export interface RegisterInput {
@@ -173,8 +180,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refreshProfile],
   );
 
-  const logout = useCallback(async () => {
-    const refresh = localStorage.getItem("fintrack_refresh");
+  const flushCredentials = useCallback(() => {
+    // A dead access token that can no longer rotate wedges the app:
+    // `isAuthenticated` stays true, `/login` redirects away, and the queue
+    // can never send. Flush the credentials so sign-in is reachable again.
+    // Deliberately NOT `logout`: no server call (the token is already
+    // useless), no cache wipe — the held queue and the owner stamp stay, so
+    // the next sign-in attributes and resumes them instead of clearing them.
+    clearTokens();
+    localStorage.removeItem(EMAIL_KEY);
+    setEmail(null);
+    setProfile(null);
+    setIsAuthenticated(false);
+  }, []);
+
+  const logout = useCallback(async () => {    const refresh = localStorage.getItem("fintrack_refresh");
     if (refresh) {
       try {
         await apiFetch("/auth/logout/", {
@@ -256,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyEmail,
       refreshProfile,
       setProfile,
+      flushCredentials,
     }),
     [
       email,
@@ -263,6 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       login,
       logout,
+      flushCredentials,
       register,
       requestPasswordReset,
       resetPassword,
