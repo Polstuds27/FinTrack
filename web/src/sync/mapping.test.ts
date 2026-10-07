@@ -64,6 +64,35 @@ describe("fromServer", () => {
     });
   });
 
+  it("mirrors the server birth moment verbatim — never pull time", () => {
+    const row = fromServer(
+      "transactions",
+      {
+        id: "tx-1",
+        type: "expense",
+        amount: "970.50",
+        created_at: "2026-10-06T15:30:00+00:00",
+        updated_at: "2026-10-07T00:00:00+00:00",
+      },
+      4,
+      null,
+    );
+    expect(row).toMatchObject({
+      created_at: "2026-10-06T15:30:00+00:00",
+      updated_at: "2026-10-07T00:00:00+00:00",
+    });
+  });
+
+  it("falls back to the server write instant for pre-mirror events only", () => {
+    const row = fromServer(
+      "categories",
+      { id: "c-1", name: "Food", updated_at: "2026-10-07T00:00:00+00:00" },
+      2,
+      null,
+    );
+    expect(row).toMatchObject({ created_at: "2026-10-07T00:00:00+00:00" });
+  });
+
   it("falls back safely on unknown enum values", () => {
     const row = fromServer("transactions", { id: "tx-2", type: "weird" }, 1, null);
     expect((row as { type: string }).type).toBe("expense");

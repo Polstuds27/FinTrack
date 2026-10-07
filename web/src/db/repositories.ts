@@ -25,6 +25,25 @@ export function newId(): string {
 
 const now = () => new Date().toISOString();
 
+/**
+ * The birth stamp for a new row: one instant shared by `created_at` and
+ * `updated_at`, so the outbox entry (which reads the row's `created_at`)
+ * carries exactly what Dexie stored — not a millisecond-later sibling.
+ */
+function stamp(): Pick<LocalRow, "created_at" | "updated_at"> {
+  const at = now();
+  return { created_at: at, updated_at: at };
+}
+
+/**
+ * Every local edit re-stamps `updated_at` and re-queues, but must never move
+ * `created_at` — not even when the patch (e.g. a pulled payload replayed by
+ * mistake) carries one. Birth is written once, by `stamp()`.
+ */
+function edited<T extends LocalRow>(existing: T, patch: Partial<T>): T {
+  return { ...existing, ...patch, created_at: existing.created_at, sync_status: "pending", updated_at: now() };
+}
+
 /** Soft-deleted rows stay in IndexedDB (tombstones) but never surface in the UI. */
 function live<T extends { deleted_at: string | null }>(rows: T[]): T[] {
   return rows.filter((row) => !row.deleted_at);
@@ -128,7 +147,7 @@ export async function createAccount(input: AccountInput): Promise<LocalAccount> 
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.accounts.add(account);
   await enqueueMutation("accounts", account.id, "create", account, 0);
@@ -141,7 +160,7 @@ export async function updateAccount(
 ): Promise<LocalAccount | undefined> {
   const existing = await db.accounts.get(id);
   if (!existing) return undefined;
-  const next: LocalAccount = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalAccount = edited(existing, patch);
   await db.accounts.put(next);
   if (patch.opening_balance !== undefined) await recalcBalances();
   await enqueueMutation("accounts", id, "update", next, existing.version);
@@ -176,7 +195,7 @@ export async function createAccountGroup(name: string): Promise<LocalAccountGrou
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.account_groups.add(group);
   await enqueueMutation("account_groups", group.id, "create", group, 0);
@@ -200,7 +219,7 @@ export async function createCategory(input: CategoryInput): Promise<LocalCategor
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.categories.add(category);
   await enqueueMutation("categories", category.id, "create", category, 0);
@@ -213,7 +232,7 @@ export async function updateCategory(
 ): Promise<LocalCategory | undefined> {
   const existing = await db.categories.get(id);
   if (!existing) return undefined;
-  const next: LocalCategory = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalCategory = edited(existing, patch);
   await db.categories.put(next);
   await enqueueMutation("categories", id, "update", next, existing.version);
   return next;
@@ -235,7 +254,7 @@ export async function createTag(name: string): Promise<LocalTag> {
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.tags.add(tag);
   await enqueueMutation("tags", tag.id, "create", tag, 0);
@@ -245,7 +264,7 @@ export async function createTag(name: string): Promise<LocalTag> {
 export async function renameTag(id: string, name: string): Promise<void> {
   const existing = await db.tags.get(id);
   if (!existing) return;
-  const next: LocalTag = { ...existing, name, sync_status: "pending", updated_at: now() };
+  const next: LocalTag = edited(existing, { name });
   await db.tags.put(next);
   await enqueueMutation("tags", id, "update", next, existing.version);
 }
@@ -298,7 +317,7 @@ export async function createTransaction(input: TransactionInput): Promise<LocalT
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.transactions.add(tx);
   await recalcBalances();
@@ -313,7 +332,7 @@ export async function updateTransaction(
 ): Promise<LocalTransaction | undefined> {
   const existing = await db.transactions.get(id);
   if (!existing) return undefined;
-  const next: LocalTransaction = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalTransaction = edited(existing, patch);
   await db.transactions.put(next);
   await recalcBalances();
   await enqueueMutation("transactions", id, "update", next, existing.version);
@@ -350,7 +369,7 @@ export async function createBudget(input: BudgetInput): Promise<LocalBudget> {
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.budgets.add(budget);
   await enqueueMutation("budgets", budget.id, "create", budget, 0);
@@ -363,7 +382,7 @@ export async function updateBudget(
 ): Promise<LocalBudget | undefined> {
   const existing = await db.budgets.get(id);
   if (!existing) return undefined;
-  const next: LocalBudget = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalBudget = edited(existing, patch);
   await db.budgets.put(next);
   await enqueueMutation("budgets", id, "update", next, existing.version);
   return next;
@@ -402,7 +421,7 @@ export async function createRecurring(input: RecurringInput): Promise<LocalRecur
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.recurring.add(rule);
   await enqueueMutation("recurring", rule.id, "create", rule, 0);
@@ -415,7 +434,7 @@ export async function updateRecurring(
 ): Promise<LocalRecurring | undefined> {
   const existing = await db.recurring.get(id);
   if (!existing) return undefined;
-  const next: LocalRecurring = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalRecurring = edited(existing, patch);
   await db.recurring.put(next);
   await enqueueMutation("recurring", id, "update", next, existing.version);
   return next;
@@ -450,7 +469,7 @@ export async function createInstallment(input: InstallmentInput): Promise<LocalI
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.installments.add(plan);
   await enqueueMutation("installments", plan.id, "create", plan, 0);
@@ -463,7 +482,7 @@ export async function updateInstallment(
 ): Promise<LocalInstallment | undefined> {
   const existing = await db.installments.get(id);
   if (!existing) return undefined;
-  const next: LocalInstallment = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalInstallment = edited(existing, patch);
   await db.installments.put(next);
   await enqueueMutation("installments", id, "update", next, existing.version);
   return next;
@@ -494,7 +513,7 @@ export async function createDebt(input: DebtInput): Promise<LocalDebt> {
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.debts.add(debt);
   await enqueueMutation("debts", debt.id, "create", debt, 0);
@@ -504,7 +523,7 @@ export async function createDebt(input: DebtInput): Promise<LocalDebt> {
 export async function updateDebt(id: string, patch: Partial<LocalDebt>): Promise<LocalDebt | undefined> {
   const existing = await db.debts.get(id);
   if (!existing) return undefined;
-  const next: LocalDebt = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalDebt = edited(existing, patch);
   await db.debts.put(next);
   await enqueueMutation("debts", id, "update", next, existing.version);
   return next;
@@ -546,7 +565,7 @@ export async function createSavingsGoal(input: SavingsGoalInput): Promise<LocalS
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.savings_goals.add(goal);
   await enqueueMutation("savings_goals", goal.id, "create", goal, 0);
@@ -559,7 +578,7 @@ export async function updateSavingsGoal(
 ): Promise<LocalSavingsGoal | undefined> {
   const existing = await db.savings_goals.get(id);
   if (!existing) return undefined;
-  const next: LocalSavingsGoal = { ...existing, ...patch, sync_status: "pending", updated_at: now() };
+  const next: LocalSavingsGoal = edited(existing, patch);
   await db.savings_goals.put(next);
   await enqueueMutation("savings_goals", id, "update", next, existing.version);
   return next;
@@ -588,7 +607,7 @@ export async function createExchangeRate(input: ExchangeRateInput): Promise<Loca
     version: 0,
     deleted_at: null,
     sync_status: "pending",
-    updated_at: now(),
+    ...stamp(),
   };
   await db.exchange_rates.add(rate);
   await enqueueMutation("exchange_rates", rate.id, "create", rate, 0);

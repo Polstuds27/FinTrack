@@ -129,6 +129,69 @@ export class FinDB extends Dexie {
             if (row.installment_id === undefined) row.installment_id = null;
           });
       });
+
+    /**
+     * v4 adds `created_at` to every business row so Dexie mirrors Neon's birth
+     * moment instead of implying it. Backfill prefers the queued-create outbox
+     * entry (the exact device birth instant, preserved untouched by merges);
+     * rows with no queued birth fall back to `updated_at`, which equals
+     * creation for anything never edited. Transactional: a failed upgrade
+     * leaves v3 data untouched.
+     */
+    this.version(4)
+      .stores({
+        accounts: "id, group_id, type, archived, sync_status, updated_at",
+        account_groups: "id, sync_status, updated_at",
+        budgets: "id, category_id, period, start_date, sync_status, updated_at",
+        categories: "id, type, parent_id, sync_status, updated_at",
+        debts: "id, direction, due_date, sync_status, updated_at",
+        exchange_rates: "id, base_currency, quote_currency, date, [base_currency+quote_currency]",
+        installments: "id, from_account_id, category_id, start_date, sync_status, updated_at",
+        recurring: "id, type, from_account_id, to_account_id, category_id, next_run_at, enabled, sync_status, updated_at",
+        savings_goals: "id, linked_account_id, target_date, sync_status, updated_at",
+        tags: "id, sync_status, updated_at",
+        transactions: "id, type, from_account_id, to_account_id, category_id, recurring_id, installment_id, date, is_bookmarked, sync_status, updated_at",
+        attachments: "id, transaction_id, upload_state, created_at",
+        notifications: "id, is_read, created_at",
+        outbox: "id, entity, entity_id, status, created_at",
+        conflicts: "id, entity, entity_id, created_at",
+        meta: "key",
+      })
+      .upgrade(async (tx) => {
+        const births = new Map<string, string>();
+        const queued = await tx.table("outbox").toCollection().toArray();
+        for (const entry of queued as Array<Record<string, unknown>>) {
+          if (entry.op === "create" && typeof entry.entity_id === "string") {
+            const at = (entry as { created_at?: unknown }).created_at;
+            if (typeof at === "string" && !births.has(entry.entity_id)) births.set(entry.entity_id, at);
+          }
+        }
+        const tables = [
+          "accounts",
+          "account_groups",
+          "budgets",
+          "categories",
+          "debts",
+          "exchange_rates",
+          "installments",
+          "recurring",
+          "savings_goals",
+          "tags",
+          "transactions",
+        ];
+        for (const name of tables) {
+          await tx
+            .table(name)
+            .toCollection()
+            .modify((row: Record<string, unknown>) => {
+              if (typeof row.created_at === "string") return;
+              const queuedBirth = typeof row.id === "string" ? births.get(row.id) : undefined;
+              row.created_at =
+                queuedBirth ??
+                (typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString());
+            });
+        }
+      });
   }
 }
 

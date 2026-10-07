@@ -16,6 +16,10 @@ class SyncMutation(models.Model):
     status = models.CharField(max_length=10, choices=STATUS)
     server_version = models.PositiveIntegerField(null=True, blank=True)
     error = models.JSONField(null=True, blank=True)
+    # When the user acted on the device. A mutation created offline Oct 6 and
+    # pushed Oct 7 must keep Oct 6 as its birth moment — without this the field
+    # is silently dropped and the server receipt time rewrites history.
+    client_timestamp = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

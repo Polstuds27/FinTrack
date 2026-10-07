@@ -7,6 +7,7 @@ conflict instead of silently winning. They run against the real Django stack
 """
 
 import uuid
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -111,6 +112,116 @@ def test_push_create_commits_and_pull_replays_it():
     assert ("account", str(account_id)) in entities
     assert ("transaction", str(tx_id)) in entities
     assert body["server_seq"] > 0
+
+
+def test_created_at_keeps_device_birth_moment_not_receipt_time():
+    """Offline Oct 6, pushed Oct 7 → Neon records Oct 6."""
+    user = make_user()
+    client = authed(user)
+    account_id = uuid.uuid4()
+    res = push(
+        client,
+        [account_mutation(account_id, client_timestamp="2026-10-06T08:00:00+08:00")],
+    )
+    assert res.json()["results"][0]["status"] == "accepted"
+    account = Account.objects.get(id=account_id)
+    manila = account.created_at.astimezone(ZoneInfo("Asia/Manila"))
+    assert (manila.year, manila.month, manila.day) == (2026, 10, 6)
+    # The birth moment is also audited on the mutation itself.
+    stored = SyncMutation.objects.get(
+        user=user, client_mutation_id=res.json()["results"][0]["client_mutation_id"]
+    )
+    assert stored.client_timestamp is not None
+    assert (stored.client_timestamp.year, stored.client_timestamp.month) == (2026, 10)
+
+
+def test_future_birth_moment_is_clamped_to_server_time():
+    """A device clock days ahead must not stamp Neon rows in the future."""
+    from django.utils import timezone
+
+    user = make_user()
+    client = authed(user)
+    account_id = uuid.uuid4()
+    future = (timezone.now() + timezone.timedelta(days=3)).isoformat()
+    before = timezone.now()
+    res = push(client, [account_mutation(account_id, client_timestamp=future)])
+    assert res.json()["results"][0]["status"] == "accepted"
+    account = Account.objects.get(id=account_id)
+    assert before <= account.created_at <= timezone.now()
+
+
+def test_oct6_creation_pushed_oct7_keeps_oct6_and_pulls_it_back():
+    """Scenarios A–C: offline birth Oct 6 23:30 PHT, delivered Oct 7, pulled back identical."""
+    user = make_user()
+    client = authed(user)
+    account_id, tx_id = uuid.uuid4(), uuid.uuid4()
+    push(client, [account_mutation(account_id, client_timestamp="2026-10-06T20:00:00+08:00")])
+
+    birth = "2026-10-06T23:30:00+08:00"
+    mutation = expense_mutation(tx_id, client_timestamp=birth)
+    mutation["payload"]["from_account_id"] = str(account_id)
+    result = push(client, [mutation]).json()["results"][0]
+    assert result["status"] == "accepted"
+
+    tx = Transaction.objects.get(id=tx_id, user=user)
+    manila_birth = tx.created_at.astimezone(ZoneInfo("Asia/Manila"))
+    assert (manila_birth.year, manila_birth.month, manila_birth.day) == (2026, 10, 6)
+    assert (manila_birth.hour, manila_birth.minute) == (23, 30)
+
+    body = pull(client).json()
+    echoed = next(
+        change
+        for change in body["changes"]
+        if change["entity"] == "transaction" and change["entity_id"] == str(tx_id)
+    )
+    from datetime import datetime
+
+    echoed_at = datetime.fromisoformat(echoed["payload"]["created_at"]).astimezone(
+        ZoneInfo("Asia/Manila")
+    )
+    assert (echoed_at.year, echoed_at.month, echoed_at.day) == (2026, 10, 6)
+    assert (echoed_at.hour, echoed_at.minute) == (23, 30)
+
+
+def test_retry_after_lost_response_keeps_timestamps_and_single_row():
+    """Scenario D: server commits, response lost, retry changes nothing."""
+    user = make_user()
+    client = authed(user)
+    account_id = uuid.uuid4()
+    mutation = account_mutation(account_id, client_timestamp="2026-10-06T23:30:00+08:00")
+
+    first = push(client, [mutation]).json()["results"][0]
+    second = push(client, [mutation]).json()["results"][0]
+    assert first["status"] == second["status"] == "accepted"
+    rows = Account.objects.filter(id=account_id, user=user)
+    assert rows.count() == 1
+    manila_birth = rows.get().created_at.astimezone(ZoneInfo("Asia/Manila"))
+    assert (manila_birth.month, manila_birth.day) == (10, 6)
+
+
+def test_update_moves_updated_at_but_pins_created_at():
+    """Scenarios E–F: Oct 6 birth, Oct 7 edit → created Oct 6, updated Oct 7.
+    A payload smuggling `created_at` is ignored, never applied."""
+    user = make_user()
+    client = authed(user)
+    account_id = uuid.uuid4()
+    push(client, [account_mutation(account_id, client_timestamp="2026-10-06T23:30:00+08:00")])
+
+    smuggled = {
+        "client_mutation_id": str(uuid.uuid4()),
+        "entity": "accounts",
+        "entity_id": str(account_id),
+        "op": "update",
+        "base_version": 1,
+        "payload": {"name": "Renamed", "created_at": "2020-01-01T00:00:00+08:00"},
+    }
+    result = push(client, [smuggled]).json()["results"][0]
+    assert result["status"] == "accepted"
+    account = Account.objects.get(id=account_id)
+    assert account.name == "Renamed"
+    manila_birth = account.created_at.astimezone(ZoneInfo("Asia/Manila"))
+    assert (manila_birth.year, manila_birth.month, manila_birth.day) == (2026, 10, 6)
+    assert account.updated_at >= account.created_at
 
 
 def test_push_is_idempotent_on_retry():

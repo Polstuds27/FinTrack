@@ -82,6 +82,12 @@ M2M_FIELDS = {"transaction": {"tags": Tag}}
 
 MAX_PULL_EVENTS = 500
 
+# Device clocks can't be trusted blindly: a phone days in the future must not
+# stamp Neon rows ahead of real time. Client birth moments further ahead than
+# this are discarded in favour of the server clock; anything older is honoured
+# no matter how long the device was offline.
+MAX_FUTURE_SKEW = timezone.timedelta(hours=24)
+
 
 def _result(mutation, status, server_version=None, error=None):
     result = {"client_mutation_id": mutation["client_mutation_id"], "status": status}
@@ -156,9 +162,13 @@ def _apply(user, mutation):
         # Idempotent replay: return the stored outcome without re-applying.
         return _result(mutation, seen.status, server_version=seen.server_version)
 
+    client_timestamp = mutation.get("client_timestamp")
+    if client_timestamp is not None and timezone.is_naive(client_timestamp):
+        client_timestamp = timezone.make_aware(client_timestamp)
+
     try:
         with db_transaction.atomic():
-            result = _apply_inner(user, model, entity, mutation)
+            result = _apply_inner(user, model, entity, mutation, client_timestamp)
     except Exception as exc:  # noqa: BLE001 - reported back to the client
         result = _result(
             mutation, "rejected", error={"code": "invalid", "message": str(exc)}
@@ -173,11 +183,25 @@ def _apply(user, mutation):
         status=result["status"],
         server_version=result.get("server_version"),
         error=result.get("error"),
+        client_timestamp=client_timestamp,
     )
     return result
 
 
-def _apply_inner(user, model, entity, mutation):
+def _birth_moment(client_timestamp):
+    """The `created_at` a new row should carry: the device's birth moment when
+    sane, the server clock otherwise. `auto_now_add` would stamp receipt time
+    (Oct 7 for an Oct 6 offline creation), rewriting history on every delayed
+    push — so callers apply this explicitly after the initial save."""
+    now = timezone.now()
+    if client_timestamp is None:
+        return now
+    if client_timestamp > now + MAX_FUTURE_SKEW:
+        return now
+    return client_timestamp
+
+
+def _apply_inner(user, model, entity, mutation, client_timestamp=None):
     obj = model.objects.filter(id=mutation["entity_id"], user=user).first()
 
     if mutation["op"] == "delete":
@@ -203,6 +227,13 @@ def _apply_inner(user, model, entity, mutation):
         if entity == "account":
             obj.current_balance = obj.opening_balance
         obj.save()
+        # `auto_now_add` stamped receipt time above; restore the true birth
+        # moment. A targeted `update()` bypasses `pre_save`, which is exactly
+        # what we want — `save()` would just re-stamp now.
+        if client_timestamp is not None:
+            birth = _birth_moment(client_timestamp)
+            model.objects.filter(pk=obj.pk).update(created_at=birth)
+            obj.created_at = birth
         _apply_m2m(user, entity, obj, m2m_payload)
         _record_event(user, entity, obj, "create")
         if entity == "transaction":

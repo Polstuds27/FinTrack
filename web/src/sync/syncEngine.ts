@@ -3,6 +3,7 @@ import { recalcBalances } from "../db/balances";
 import { db, tableFor } from "../db";
 import type { EntityName, LocalTransaction, OutboxEntry, PushResult, SyncChange } from "../db/types";
 import { fromServer, normalizeEntityName } from "./mapping";
+import { syncDebug } from "./debug";
 import {
   getCheckpoint,
   getClientId,
@@ -84,6 +85,12 @@ async function pushRound(clientId: string): Promise<boolean> {
 
     if (result.status === "accepted") {
       const version = result.server_version ?? entry.base_version;
+      syncDebug("push accepted", {
+        id: entry.entity_id,
+        entity: entry.entity,
+        client_timestamp: entry.created_at,
+        server_version: version,
+      });
       await patchRow(entry.entity, entry.entity_id, { version, sync_status: "synced" });
       await db.outbox.delete(entry.id);
       if (entry.entity === "transactions") await recalcBalances();
@@ -160,11 +167,17 @@ async function applyChange(change: SyncChange): Promise<void> {
         typeof change.payload?.deleted_at === "string"
           ? change.payload.deleted_at
           : new Date().toISOString();
+      // The server instant, not ours: a tombstone pulled at 08:00 for a
+      // 23:30 deletion must read 23:30 on both sides of the mirror.
+      const serverUpdatedAt =
+        typeof change.payload?.updated_at === "string"
+          ? change.payload.updated_at
+          : deletedAt;
       await patchRow(entity, change.entity_id, {
         deleted_at: deletedAt,
         version: change.version,
         sync_status: "synced",
-        updated_at: new Date().toISOString(),
+        updated_at: serverUpdatedAt,
       });
     }
     if (entity === "transactions") await recalcBalances();
@@ -201,6 +214,13 @@ async function applyChange(change: SyncChange): Promise<void> {
 
   const row = fromServer(entity, change.payload, change.version, null);
   const merged = { ...(existing ?? {}), ...row } as LocalTransaction;
+  syncDebug("pull mapped", {
+    id: change.entity_id,
+    entity,
+    op: change.op,
+    created_at: (row as { created_at?: unknown }).created_at,
+    version: change.version,
+  });
   await putRow(entity, merged);
   if (entity === "transactions") await recalcBalances();
 }
