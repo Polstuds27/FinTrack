@@ -77,8 +77,43 @@ export interface ResetInput {
 const AuthContext = createContext<AuthState | null>(null);
 
 /** Shown when the previous account's rows can't be removed before a sign-in. */
-const CACHE_ERROR =
+export const CACHE_CLAIM_ERROR =
   "Couldn't clear the previous account's data. Close any other FinTrack tabs, then try again.";
+
+/** True when sign-in aborted on an unverifiable local cache (not on credentials). */
+export function isCacheClaimError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 500 && error.message === CACHE_CLAIM_ERROR;
+}
+
+/**
+ * Last-resort recovery for a cache that can no longer be wiped (locked or
+ * corrupt IndexedDB): drop the whole database and every stored credential,
+ * then reload into a clean sign-in. Unsynced local changes are destroyed —
+ * callers must confirm first and say so. Synced data re-downloads on next
+ * sign-in.
+ */
+export async function eraseDeviceData(): Promise<never> {
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch {
+    /* storage itself is broken; the reload below is still the way out */
+  }
+  try {
+    // A stuck delete (other tabs holding the database) must not wedge this
+    // tab forever — race it, then reload regardless.
+    await Promise.race([
+      db.delete(),
+      new Promise((resolve) => window.setTimeout(resolve, 5000)),
+    ]);
+  } catch {
+    /* fall through to reload */
+  }
+  window.location.reload();
+  // Unreachable in practice; keeps the `never` contract honest for callers.
+  await new Promise(() => {});
+  throw new Error("eraseDeviceData: reload did not happen");
+}
 
 const CHECKPOINT_PREFIX = "last_seq:";
 
@@ -121,7 +156,7 @@ async function claimLocalData(nextEmail: string): Promise<void> {
     try {
       await clearAllData();
     } catch {
-      throw new ApiError(500, CACHE_ERROR);
+      throw new ApiError(500, CACHE_CLAIM_ERROR);
     }
   }
   localStorage.setItem(LOCAL_OWNER_KEY, owner);

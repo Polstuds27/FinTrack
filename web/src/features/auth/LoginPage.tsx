@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { Button, IconButton } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { AuthLayout, FormError } from "./AuthLayout";
+import { CacheClaimRecovery } from "./CacheClaimRecovery";
 import { stashMfaCredentials } from "./MfaPage";
 
 export function LoginPage() {
@@ -56,6 +57,7 @@ export function LoginPage() {
     >
       <form onSubmit={submit} className="space-y-4" noValidate>
         {error && <FormError message={error} />}
+        <CacheClaimRecovery error={error} />
 
         <Input
           label="Email"
