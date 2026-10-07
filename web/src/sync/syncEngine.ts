@@ -6,7 +6,6 @@ import { fromServer, normalizeEntityName } from "./mapping";
 import {
   getCheckpoint,
   getClientId,
-  MAX_ATTEMPTS,
   pendingMutations,
   setCheckpoint,
 } from "./outbox";
@@ -58,17 +57,15 @@ async function pushRound(clientId: string): Promise<boolean> {
     }));
   } catch (error) {
     // The batch never reached the server: nothing is confirmed, nothing is
-    // lost. Record the attempt so a permanently unreachable backend parks the
-    // entries instead of spinning them forever, then abort the cycle — pulling
-    // over a dead connection would only move the cursor past unseen changes.
-    // Idempotency keys (`client_mutation_id`) make the eventual retry safe.
+    // lost — so the retry budget is deliberately untouched. Burning attempts
+    // here is exactly how a few dead cycles permanently parked a whole queue:
+    // entries the server never saw would stop being retried once back online.
+    // Attempts only count server verdicts, which arrive below. Abort the cycle
+    // (pulling over a dead connection would only move the cursor past unseen
+    // changes); idempotency keys (`client_mutation_id`) make the retry safe.
     const message = error instanceof Error ? error.message : "Push failed before reaching the server";
     for (const entry of batch) {
-      await db.outbox.update(entry.id, {
-        status: entry.attempts + 1 >= MAX_ATTEMPTS ? "failed" : "pending",
-        attempts: entry.attempts + 1,
-        last_error: message,
-      });
+      await db.outbox.update(entry.id, { last_error: message });
     }
     throw error;
   }

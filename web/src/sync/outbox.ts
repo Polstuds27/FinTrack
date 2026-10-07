@@ -93,6 +93,51 @@ export async function outboxCount(): Promise<number> {
 }
 
 /**
+ * Entries the server rejected for good (or that stopped returning results):
+ * excluded from push batches, but never deleted — the Sync screen lists them
+ * with their error and a retry.
+ */
+export async function parkedEntries(limit = 50): Promise<OutboxEntry[]> {
+  const entries = await db.outbox
+    .filter((entry) => ownedByCurrentAccount(entry) && entry.status === "failed")
+    .sortBy("created_at");
+  return entries.slice(-limit).reverse();
+}
+
+/** Give a parked entry one more chance: back to the push batch. */
+export async function retryMutation(id: string): Promise<void> {
+  await db.outbox.update(id, { status: "pending", attempts: 0, last_error: null });
+}
+
+/** Give every parked entry one more chance. */
+export async function retryAllParked(): Promise<number> {
+  const ids = await db.outbox
+    .filter((entry) => ownedByCurrentAccount(entry) && entry.status === "failed")
+    .primaryKeys();
+  await db.outbox.where("id").anyOf(ids).modify({ status: "pending", attempts: 0, last_error: null });
+  return ids.length;
+}
+
+/**
+ * One-time amnesty, run on boot. Transport failures used to burn the retry
+ * budget, so entries the server never saw got parked as `failed` and stopped
+ * being sent the moment connectivity returned — exactly the stuck queue in
+ * Settings. The engine no longer counts transport failures, so every parked
+ * entry gets one clean retry: genuinely invalid ones are re-rejected by the
+ * server (which is a real verdict and re-parks them with its error), the rest
+ * finally upload. Guarded by a meta flag so it runs once, not every launch.
+ */
+export async function releaseWronglyParked(): Promise<number> {
+  if (await getMeta("outbox_amnesty_v1")) return 0;
+  const ids = await db.outbox.filter((entry) => entry.status === "failed").primaryKeys();
+  if (ids.length > 0) {
+    await db.outbox.where("id").anyOf(ids).modify({ status: "pending", attempts: 0, last_error: null });
+  }
+  await setMeta("outbox_amnesty_v1", new Date().toISOString());
+  return ids.length;
+}
+
+/**
  * Every queued row regardless of owner. Signed out, the engine can send
  * nothing — but the rows are still held on the device, and the Sync screen
  * must say so instead of reporting a stale (or zero) "waiting" count.
