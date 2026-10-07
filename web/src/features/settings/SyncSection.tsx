@@ -11,7 +11,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Badge, Button, Card, DetailRow, Divider, LinkButton } from "../../components/ui";
 import { formatDateTime, formatRelativeTime } from "../../design/format";
 import { db } from "../../db";
-import { pendingMutations } from "../../sync/outbox";
+import { pendingMutations, outboxTotal } from "../../sync/outbox";
 import { useSync } from "../../sync/SyncContext";
 import type { OutboxEntry } from "../../db/types";
 import { Panel } from "./Panel";
@@ -28,6 +28,9 @@ export function SyncSection() {
   const { status, pendingCount, conflicts, lastSyncedAt, syncNow } = useSync();
   const [busy, setBusy] = useState(false);
   const [queue, setQueue] = useState<OutboxEntry[]>([]);
+  // Signed out, the owner filter hides everything — but the rows are still
+  // held on this device, so count them separately instead of claiming zero.
+  const [held, setHeld] = useState(0);
 
   const conflictRows = useLiveQuery(async () => db.conflicts.toArray(), [], undefined);
 
@@ -36,6 +39,13 @@ export function SyncSection() {
     void pendingMutations(20).then((rows) => {
       if (!cancelled) setQueue(rows);
     });
+    if (status === "signed-out") {
+      void outboxTotal().then((total) => {
+        if (!cancelled) setHeld(total);
+      });
+    } else if (!cancelled) {
+      setHeld(0);
+    }
     return () => {
       cancelled = true;
     };
@@ -75,7 +85,18 @@ export function SyncSection() {
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={STATUS_TONE[status] ?? "neutral"}>{status}</Badge>
           <span className="text-sm text-muted">
-            {pendingCount} change{pendingCount === 1 ? "" : "s"} waiting to be pushed
+            {status === "signed-out" && held > 0 ? (
+              <>
+                {held} change{held === 1 ? "" : "s"} held on this device —{" "}
+                <Link to="/login" className="font-medium text-primary hover:underline">
+                  sign in to send
+                </Link>
+              </>
+            ) : (
+              <>
+                {pendingCount} change{pendingCount === 1 ? "" : "s"} waiting to be pushed
+              </>
+            )}
           </span>
         </div>
         <Divider />
@@ -109,7 +130,18 @@ export function SyncSection() {
       <Panel title="Outbox" description="Mutations waiting to be sent, newest first.">
         {queue.length === 0 ? (
           <p className="text-sm text-muted">
-            Nothing pending — every local edit has been acknowledged by the server.
+            {status === "signed-out" && held > 0 ? (
+              <>
+                {held} change{held === 1 ? " is" : "s are"} held on this device. Nothing was
+                discarded —{" "}
+                <Link to="/login" className="font-medium text-primary hover:underline">
+                  sign in
+                </Link>{" "}
+                to send {held === 1 ? "it" : "them"}.
+              </>
+            ) : (
+              "Nothing pending — every local edit has been acknowledged by the server."
+            )}
           </p>
         ) : (
           <ul className="divide-y divide-line">

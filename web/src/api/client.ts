@@ -81,10 +81,18 @@ async function doRefresh(): Promise<boolean> {
   const refresh = getRefreshToken();
   if (!refresh) return false;
   try {
+    // Same timeout as every other request: without it one hung rotation
+    // (cold-starting backend, stalled radio) wedges the shared promise and
+    // every sync behind it until the tab is killed.
+    const timeout =
+      typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+        ? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        : undefined;
     const res = await fetch(`${API_BASE_URL}/auth/refresh/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh }),
+      signal: timeout,
     });
     if (!res.ok) return false;
     const data = (await res.json()) as { access?: string; refresh?: string };

@@ -42,6 +42,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const syncNow = useCallback(async () => {
     if (!isAuthenticated) {
       setStatus("signed-out");
+      // Signed out is still a state the Sync screen reports on: refresh the
+      // numbers so it shows this device's held queue, not a stale snapshot.
+      setPendingCount(await outboxCount());
+      setConflicts(await db.conflicts.toArray());
       return;
     }
     // The indicator's "Syncing…" state never appeared before: no code path
