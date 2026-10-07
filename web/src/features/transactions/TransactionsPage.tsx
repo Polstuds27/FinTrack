@@ -30,7 +30,7 @@ import {
   Select,
   Stat,
 } from "../../components/ui";
-import { formatMoney } from "../../design/format";
+import { byTxNewest, formatMoney } from "../../design/format";
 import { useLocalData } from "../analytics/useLocalData";
 import { usePreferences } from "../settings/preferences";
 import { summarize } from "../analytics/engine";
@@ -93,7 +93,7 @@ export function TransactionsPage() {
         }
         return true;
       })
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort(byTxNewest);
   }, [dataset.transactions, range, typeFilter, accountId, categoryId, query, lookups]);
 
   const summary = useMemo(() => summarize(filtered, null, lookups.fx), [filtered, lookups.fx]);

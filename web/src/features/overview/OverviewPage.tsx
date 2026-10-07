@@ -31,7 +31,7 @@ import {
   ProgressBar,
   Stat,
 } from "../../components/ui";
-import { formatMoney, formatMonth, formatPercent } from "../../design/format";
+import { byTxNewest, formatMoney, formatMonth, formatPercent } from "../../design/format";
 import { ACCOUNT_TYPE_LABELS, accountIcon, categoryIcon } from "../../design/icons";
 import { useLocalData } from "../analytics/useLocalData";
 import { usePreferences } from "../settings/preferences";
@@ -87,7 +87,7 @@ export function OverviewPage() {
   );
 
   const recent = useMemo(
-    () => [...dataset.transactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6),
+    () => [...dataset.transactions].sort(byTxNewest).slice(0, 6),
     [dataset.transactions],
   );
 

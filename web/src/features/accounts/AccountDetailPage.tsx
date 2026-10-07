@@ -29,7 +29,7 @@ import {
   Stat,
   useToast,
 } from "../../components/ui";
-import { formatMoney, formatPercent } from "../../design/format";
+import { byTxNewest, formatMoney, formatPercent } from "../../design/format";
 import { ACCOUNT_TYPE_LABELS, accountIcon } from "../../design/icons";
 import { useLocalData } from "../analytics/useLocalData";
 import { usePreferences } from "../settings/preferences";
@@ -65,7 +65,7 @@ export function AccountDetailPage() {
     () =>
       dataset.transactions
         .filter((tx) => tx.from_account_id === id || tx.to_account_id === id)
-        .sort((a, b) => b.date.localeCompare(a.date)),
+        .sort(byTxNewest),
     [dataset.transactions, id],
   );
 

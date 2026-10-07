@@ -8,6 +8,7 @@
 import { useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "../../db";
+import { byCreatedDesc, byTxNewest } from "../../design/format";
 import {
   buildLookups,
   type Dataset,
@@ -18,6 +19,13 @@ import { usePreferences } from "../settings/preferences";
 /** Dropped rows first: soft-deleted rows exist only as sync tombstones. */
 function live<T extends { deleted_at: string | null }>(rows: T[] | undefined): T[] {
   return (rows ?? []).filter((row) => !row.deleted_at);
+}
+
+/** Management lists render newest-created first; the ledger adds business-date order. */
+function newest<T extends { created_at: string; deleted_at: string | null }>(
+  rows: T[] | undefined,
+): T[] {
+  return live(rows).sort(byCreatedDesc);
 }
 
 export interface LocalData {
@@ -48,16 +56,16 @@ export function useLocalData(): LocalData {
 
   const dataset = useMemo<Dataset>(
     () => ({
-      accounts: accounts ?? [],
-      categories: categories ?? [],
-      tags: tags ?? [],
-      transactions: transactions ?? [],
-      budgets: budgets ?? [],
-      recurring: recurring ?? [],
-      installments: installments ?? [],
-      debts: debts ?? [],
-      goals: goals ?? [],
-      rates: rates ?? [],
+      accounts: newest(accounts),
+      categories: newest(categories),
+      tags: newest(tags),
+      transactions: live(transactions).sort(byTxNewest),
+      budgets: newest(budgets),
+      recurring: newest(recurring),
+      installments: newest(installments),
+      debts: newest(debts),
+      goals: newest(goals),
+      rates: newest(rates),
       baseCurrency: preferences.baseCurrency,
     }),
     [accounts, categories, tags, transactions, budgets, recurring, installments, debts, goals, rates, preferences.baseCurrency],

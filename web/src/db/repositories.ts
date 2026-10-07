@@ -16,6 +16,7 @@ import type {
   LocalTransaction,
 } from "./types";
 import { enqueueMutation } from "../sync/outbox";
+import { byTxNewest } from "../design/format";
 
 export { recalcBalances };
 
@@ -70,7 +71,7 @@ export async function listTags(): Promise<LocalTag[]> {
 }
 
 export async function listTransactions(): Promise<LocalTransaction[]> {
-  return live(await db.transactions.toArray()).sort((a, b) => b.date.localeCompare(a.date));
+  return live(await db.transactions.toArray()).sort(byTxNewest);
 }
 
 export async function listBudgets(): Promise<LocalBudget[]> {

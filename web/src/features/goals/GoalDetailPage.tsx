@@ -23,7 +23,7 @@ import {
   Stat,
   useToast,
 } from "../../components/ui";
-import { formatMoney, formatPercent, formatRelativeDay, toDate } from "../../design/format";
+import { byTxNewest, formatMoney, formatPercent, formatRelativeDay, toDate } from "../../design/format";
 import { useLocalData } from "../analytics/useLocalData";
 import { goalProgress } from "../analytics/engine";
 import { deleteSavingsGoal } from "../../db/repositories";
@@ -52,7 +52,7 @@ export function GoalDetailPage() {
     () =>
       dataset.transactions
         .filter((tx) => tx.savings_goal_id === goalId)
-        .sort((a, b) => b.date.localeCompare(a.date)),
+        .sort(byTxNewest),
     [dataset.transactions, goalId],
   );
 

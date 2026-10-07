@@ -31,7 +31,7 @@ import {
   useToast,
 } from "../../components/ui";
 import type { LocalRecurring } from "../../db/types";
-import { formatDate, formatMoney, formatRelativeDay, toDate } from "../../design/format";
+import { byTxNewest, formatDate, formatMoney, formatRelativeDay, toDate } from "../../design/format";
 import { categoryIcon } from "../../design/icons";
 import { useLocalData } from "../analytics/useLocalData";
 import { advanceOccurrence } from "../analytics/period";
@@ -72,7 +72,7 @@ export function RecurringDetailPage() {
     () =>
       dataset.transactions
         .filter((tx) => tx.recurring_id === recurringId)
-        .sort((a, b) => b.date.localeCompare(a.date))
+        .sort(byTxNewest)
         .slice(0, 10),
     [dataset.transactions, recurringId],
   );

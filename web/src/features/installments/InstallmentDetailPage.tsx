@@ -22,7 +22,7 @@ import {
   ProgressBar,
   useToast,
 } from "../../components/ui";
-import { formatDate, formatMoney, formatPercent, formatRelativeDay } from "../../design/format";
+import { byTxNewest, formatDate, formatMoney, formatPercent, formatRelativeDay } from "../../design/format";
 import { useLocalData } from "../analytics/useLocalData";
 import { installmentProgress } from "../analytics/engine";
 import { deleteInstallment } from "../../db/repositories";
@@ -49,7 +49,7 @@ export function InstallmentDetailPage() {
     () =>
       dataset.transactions
         .filter((tx) => tx.installment_id === installmentId)
-        .sort((a, b) => b.date.localeCompare(a.date)),
+        .sort(byTxNewest),
     [dataset.transactions, installmentId],
   );
 
